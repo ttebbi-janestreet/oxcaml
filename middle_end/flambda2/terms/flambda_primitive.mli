@@ -371,6 +371,11 @@ type nullary_primitive =
   | Enter_inlined_apply of { dbg : Inlined_debuginfo.t }
       (** Used in classic mode to denote the start of an inlined function body.
           This is then used in to_cmm to correctly add inlined debuginfo. *)
+  | Source_location of { dbg : Debuginfo.t }
+      (** A marker carrying a source location, lowered to a [.loc] directive
+          that is preserved (in number and order) to the backend for
+          feedback-directed optimization. It must not be deleted; [load] of the
+          profile relies on these markers surviving. *)
   | Dls_get  (** Obtain the domain-local state block. *)
   | Tls_get  (** Obtain the thread-local state block. *)
   | Domain_index  (** Obtain the current domain's index. *)

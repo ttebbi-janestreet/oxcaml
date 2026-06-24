@@ -199,6 +199,20 @@ let traverse_prim denv acc ~bound_pattern (prim : Flambda_primitive.t) ~default
     let name = Acc.simple_to_node acc ~denv arg in
     default_bp (fun to_ ->
         Acc.add_accessor_dep acc ~to_ Field.get_tag ~base:name)
+  | Nullary (Source_location _) ->
+    (* The FDO source-location marker has no effects, but must be preserved:
+       treat it like an effectful primitive so the reaper keeps it whenever the
+       surrounding code survives. *)
+    let bound_to = Bound_pattern.free_names bound_pattern in
+    Name_occurrences.fold_names bound_to
+      ~f:(fun () bound_to ->
+        Acc.add_cond_any_usage acc ~denv (Simple.name bound_to))
+      ~init:();
+    default_bp (fun to_ ->
+        Acc.add_use_dep acc
+          ~from:(Code_id_or_name.name (Env.le_monde_exterieur denv))
+          ~to_);
+    default acc
   | Nullary
       ( Invalid _ | Optimised_out _ | Probe_is_enabled _ | Enter_inlined_apply _
       | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax )

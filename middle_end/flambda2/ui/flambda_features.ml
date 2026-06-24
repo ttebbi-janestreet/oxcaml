@@ -18,6 +18,10 @@ let debug_flambda2 () = !Oxcaml_flags.Flambda2.debug
 
 let debug_reaper s = List.mem s !Oxcaml_flags.Flambda2.reaper_debug_flags
 
+let fdo_source_profile () = Oxcaml_flags.fdo_source_profile ()
+
+let emit_fdo_instrumentation () = !Oxcaml_flags.emit_fdo_instrumentation
+
 let with_default (r : 'a Oxcaml_flags.or_default)
     ~(f : Oxcaml_flags.Flambda2.flags -> 'a) =
   match r with

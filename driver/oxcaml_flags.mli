@@ -135,6 +135,18 @@ val keep_llvmir : bool ref
 val llvm_path : string option ref
 val llvm_flags : string ref
 
+val fdo_source_profile_path : string option ref
+
+(** The source-call-stack profile named by [-fdo-source-profile], loaded once on
+    first call (or [None] if the flag is unset). Raises
+    {!Source_stack_profile.Error} if the profile is malformed. *)
+val fdo_source_profile : unit -> Source_stack_profile.t option
+
+(** When set (by [-emit-fdo-instrumentation]), inlined call sites are marked
+    with a source-location intrinsic so that [ocamlfdo] can later decode source
+    call stacks from the generated debug information. *)
+val emit_fdo_instrumentation : bool ref
+
 module Flambda2 : sig
   val debug : bool ref
   val reaper_debug_flags : string list ref

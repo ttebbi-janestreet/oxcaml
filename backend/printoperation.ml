@@ -122,6 +122,7 @@ let operation ?(print_reg = Printreg.reg) (op : Operation.t) arg ppf res =
   | Begin_region -> fprintf ppf "beginregion"
   | End_region -> fprintf ppf "endregion %a" reg arg.(0)
   | Specific op -> Arch.print_specific_operation reg op ppf arg
+  | Source_location -> fprintf ppf "source_location"
   | Dls_get -> fprintf ppf "dls_get"
   | Tls_get -> fprintf ppf "tls_get"
   | Domain_index -> fprintf ppf "domain_index"

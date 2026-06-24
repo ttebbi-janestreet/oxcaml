@@ -64,7 +64,8 @@ module Make (Target : Cfg_selectgen_target_intf.S) = struct
         List.for_all is_simple_expr args
         (* The following may have side effects *)
       | Capply _ | Cextcall _ | Calloc _ | Cstore _ | Craise _ | Catomic _
-      | Cprobe _ | Cprobe_is_enabled _ | Copaque | Cpoll | Cpause ->
+      | Cprobe _ | Cprobe_is_enabled _ | Copaque | Cpoll | Cpause
+      | Csource_location ->
         false
       | Cprefetch _ | Cbeginregion | Cendregion ->
         false
@@ -126,7 +127,7 @@ module Make (Target : Cfg_selectgen_target_intf.S) = struct
         | Cload { mutability = Mutable } | Cdls_get | Ctls_get | Cdomain_index
           ->
           EC.coeffect_only Read_mutable
-        | Cprobe_is_enabled _ -> EC.coeffect_only Arbitrary
+        | Cprobe_is_enabled _ | Csource_location -> EC.coeffect_only Arbitrary
         | Ctuple_field _ | Caddi | Csubi | Cmuli | Cmulhi _ | Cdivi | Cmodi
         | Caddi128 | Csubi128 | Cmuli64 _ | Cand | Cor | Cxor | Cbswap _
         | Ccsel _ | Cclz | Cctz | Cpopcnt | Clsl | Clsr | Casr | Ccmpi _ | Caddv
@@ -341,6 +342,7 @@ module Make (Target : Cfg_selectgen_target_intf.S) = struct
         args )
     | Cpoll -> SU.basic_op Poll, args
     | Cpause -> SU.basic_op Pause, args
+    | Csource_location -> SU.basic_op Source_location, args
     | Caddi -> select_arith_comm Iadd args
     | Csubi -> select_arith Isub args
     | Cmuli -> select_arith_comm Imul args

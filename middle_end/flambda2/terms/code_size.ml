@@ -391,6 +391,7 @@ let nullary_prim_size prim =
   | Optimised_out _ -> 0
   | Probe_is_enabled { name = _; enabled_at_init = _ } -> 4
   | Enter_inlined_apply _ -> 0
+  | Source_location _ -> 0
   | Dls_get -> 1
   | Tls_get -> 1
   | Domain_index -> 1

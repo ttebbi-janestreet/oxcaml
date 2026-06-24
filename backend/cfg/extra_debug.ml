@@ -65,3 +65,29 @@ let add cl =
     prev
   in
   ignore (DLL.fold_left ~f:update_block ~init:cfg.fun_dbg layout : Debuginfo.t)
+
+(* Discriminators stamped on call-site [.loc] directives under
+   [-emit-fdo-instrumentation], so that ocamlfdo can count OCaml calls
+   separately from other instructions, and tell actual (non-inlined) calls from
+   virtual (inlined) ones. These values are a convention shared with
+   ocamlfdo. *)
+let actual_call_discriminator = 1
+
+let inlined_call_discriminator = 2
+
+let mark_calls cl =
+  let cfg = CL.cfg cl in
+  Cfg.iter_blocks cfg ~f:(fun (_ : Label.t) (block : Cfg.basic_block) ->
+      DLL.iter block.body ~f:(fun (i : Cfg.basic Cfg.instruction) ->
+          match[@ocaml.warning "-4"] i.desc with
+          | Op Source_location ->
+            i.fdo
+              <- Fdo_info.create ~discriminator:inlined_call_discriminator
+                   ~dbg:i.dbg
+          | _ -> ());
+      let t = block.terminator in
+      match[@ocaml.warning "-4"] t.desc with
+      | Call _ | Tailcall_func _ | Tailcall_self _ ->
+        t.fdo
+          <- Fdo_info.create ~discriminator:actual_call_discriminator ~dbg:t.dbg
+      | _ -> ())

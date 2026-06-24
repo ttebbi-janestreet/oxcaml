@@ -832,6 +832,17 @@ and let_expr0 env res let_expr (bound_pattern : Bound_pattern.t)
   | Singleton _, Prim (Nullary (Enter_inlined_apply { dbg }), _) ->
     let env = Env.enter_inlined_apply env dbg in
     expr env res body
+  | Singleton _, Prim (Nullary (Source_location { dbg }), _) ->
+    (* The marker produces no result and would otherwise be dropped by
+       [let_prim] as an unused coeffect-only binding. Emit it directly so that
+       it reaches the backend, where it lowers to a lone [.loc] directive that
+       is preserved for FDO. *)
+    let dbg = Env.add_inlined_debuginfo env dbg in
+    let cmm, free_vars, symbol_inits, res = expr env res body in
+    ( C.sequence (Cmm.Cop (Cmm.Csource_location, [], dbg)) cmm,
+      free_vars,
+      symbol_inits,
+      res )
   | Singleton v, Prim ((Unary (End_region _, _) as p), dbg) ->
     (* CR gbury: this is a hack to prevent moving of expressions past an
        End_region. We have to do this manually because we currently have effects

@@ -186,6 +186,39 @@ let inlining_does_decrease_code_size ~code_or_metadata cost_metrics =
   let inlined_code_size = Cost_metrics.size cost_metrics in
   not (Code_size.( <= ) original_code_size inlined_code_size)
 
+(* When a source-call-stack profile is supplied (via [-fdo-source-profile]),
+   scale the inlining threshold by how hot the call site is, so hot call sites
+   are more eager to inline and cold ones less so. [estimate_for_debuginfo]
+   gives the call's absolute profiled count; we normalize it by the profile's
+   total number of calls (actual + inlined) to get the call's share of all
+   calls, scale that linearly against a fixed [reference_call_fraction] (a call
+   at that fraction keeps the threshold unchanged), and clamp the result to
+   [[min_fdo_multiplier, max_fdo_multiplier]] so a single very hot or very cold
+   site cannot blow up or zero out the threshold. With no profile, no estimate,
+   or an empty profile, the multiplier is [1.] (unchanged).
+
+   These constants are an initial heuristic and are expected to be tuned. *)
+let reference_call_fraction = 0.001
+
+let min_fdo_multiplier = 0.25
+
+let max_fdo_multiplier = 4.0
+
+let fdo_hotness_multiplier ~apply =
+  match Flambda_features.fdo_source_profile () with
+  | None -> 1.
+  | Some profile -> (
+    let total_calls = Source_stack_profile.total_calls profile in
+    match
+      Source_stack_profile.estimate_for_debuginfo profile (Apply.dbg apply)
+    with
+    | None -> 1.
+    | Some _ when total_calls <= 0 -> 1.
+    | Some count ->
+      let call_fraction = Int.to_float count /. Int.to_float total_calls in
+      let multiplier = call_fraction /. reference_call_fraction in
+      Float.max min_fdo_multiplier (Float.min max_fdo_multiplier multiplier))
+
 let might_inline dacc ~apply ~code_or_metadata ~function_type ~simplify_expr
     ~return_arity : Call_site_inlining_decision_type.t =
   let denv = DA.denv dacc in
@@ -256,6 +289,7 @@ let might_inline dacc ~apply ~code_or_metadata ~function_type ~simplify_expr
             Cost_metrics.evaluate ~args:inlining_args cost_metrics
           in
           let threshold = Inlining_arguments.threshold inlining_args in
+          let threshold = threshold *. fdo_hotness_multiplier ~apply in
           let is_under_inline_threshold =
             Float.compare evaluated_to threshold <= 0
           in

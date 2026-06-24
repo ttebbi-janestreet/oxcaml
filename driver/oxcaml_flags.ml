@@ -159,6 +159,22 @@ let llvm_path = ref None (* -llvm-path *)
 
 let llvm_flags = ref "" (* -llvm-flags *)
 
+let fdo_source_profile_path = ref None (* -fdo-source-profile *)
+
+let emit_fdo_instrumentation = ref false (* -emit-fdo-instrumentation *)
+
+(* The profile is loaded once, on first use, from [fdo_source_profile_path]
+   (which is set during argument parsing, before this is forced). Held here so
+   that any compiler phase can consult it. Loading raises if the profile is
+   malformed, surfacing broken feedback-directed optimization loudly. *)
+let fdo_source_profile_lazy =
+  lazy
+    (Option.map
+       (fun filename -> Source_stack_profile.load ~filename)
+       !fdo_source_profile_path)
+
+let fdo_source_profile () = Lazy.force fdo_source_profile_lazy
+
 module Flambda2 = struct
   let debug = ref false (* -flambda2-debug *)
   let reaper_debug_flags = ref [] (* -reaper-debug-flags *)

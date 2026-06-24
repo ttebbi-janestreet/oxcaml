@@ -172,6 +172,11 @@ type t =
         provenance : Backend_var.Provenance.t option;
         regs : Reg.t array
       }
+  | Source_location
+      (** A marker carrying a source location in its [dbg] field, to be
+          preserved (in number and order) as a [.loc] directive for
+          feedback-directed optimization. It has no arguments or results and
+          emits nothing but its location. *)
   | Dls_get
   | Tls_get
   | Domain_index

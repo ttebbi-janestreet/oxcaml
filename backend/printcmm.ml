@@ -336,6 +336,7 @@ let operation d = function
   | Cdomain_index -> "domain_index"
   | Cpoll -> "poll"
   | Cpause -> "pause"
+  | Csource_location -> "source_location"
 
 let rec expr ppf = function
   | Cconst_int (n, _dbg) -> fprintf ppf "%i" n

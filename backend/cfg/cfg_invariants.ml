@@ -344,6 +344,7 @@ let check_basic_arity t label (instr : Cfg.basic Cfg.instruction) =
     | Dls_get | Tls_get | Domain_index ->
       check ~expected_args:[0] ~expected_res:[1]
     | Poll | Pause -> check ~expected_args:[0] ~expected_res:[0]
+    | Source_location -> check ~expected_args:[0] ~expected_res:[0]
     | Alloc _ -> check ~expected_args:[0] ~expected_res:[1])
 
 let check_tailrec t _label block =
@@ -474,8 +475,8 @@ let check_stack_offset t label (block : Cfg.basic_block) =
             | Const_vec512 _ | Load _ | Store _ | Intop _ | Int128op _
             | Intop_imm _ | Intop_atomic _ | Floatop _ | Csel _ | Static_cast _
             | Reinterpret_cast _ | Probe_is_enabled _ | Opaque | Begin_region
-            | End_region | Specific _ | Name_for_debugger _ | Dls_get | Tls_get
-            | Domain_index | Poll | Pause | Alloc _ )
+            | End_region | Specific _ | Name_for_debugger _ | Source_location
+            | Dls_get | Tls_get | Domain_index | Poll | Pause | Alloc _ )
         | Reloadretaddr | Prologue | Epilogue | Stack_check _ ->
           cur_stack_offset)
   in

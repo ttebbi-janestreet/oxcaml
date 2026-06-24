@@ -506,6 +506,9 @@ type operation =
   | Cdomain_index
   | Cpoll
   | Cpause
+  | Csource_location
+      (** A marker carrying a source location in its [dbg], preserved to the
+          backend as a [.loc] directive for feedback-directed optimization. *)
 
 (* SIMD vectors are untyped in the backend. This record holds the bitwise
    representation of a 128-bit value. [word0] is the least significant word. *)

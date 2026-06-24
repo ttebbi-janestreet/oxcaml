@@ -754,6 +754,11 @@ let file_emitter ~file_num ~file_name =
 let emit_debug_info ?discriminator dbg =
   Emitaux.emit_debug_info_gen ?discriminator dbg file_emitter D.loc
 
+let emit_debug_info_linear i =
+  match i.fdo with
+  | None -> emit_debug_info i.dbg
+  | Some { discriminator; dbg } -> emit_debug_info ~discriminator dbg
+
 (* Record calls to the GC -- we've moved them out of the way *)
 
 let emit_call_gc gc =
@@ -1347,7 +1352,7 @@ let emit_condbranch arg tst lbl =
 (* Output the assembly code for an instruction *)
 
 let emit_instr env i =
-  emit_debug_info i.dbg;
+  emit_debug_info_linear i;
   match i.desc with
   | Lend -> ()
   | Lprologue ->
@@ -1765,6 +1770,10 @@ let emit_instr env i =
     A.ins4 SBFM rd rn (O.imm_six 0) (O.imm_six (size - 1))
   | Lop (Specific (Isimd simd)) -> simd_instr simd i
   | Lop (Name_for_debugger _) -> ()
+  | Lop Source_location ->
+    (* Only the [.loc] directive (emitted from [i.dbg]) matters; the marker
+       itself produces no machine code. *)
+    ()
   | Lcall_op (Lprobe _) ->
     Misc.fatal_error "Optimized probes not supported on arm64."
   | Lop (Probe_is_enabled { name; enabled_at_init }) ->

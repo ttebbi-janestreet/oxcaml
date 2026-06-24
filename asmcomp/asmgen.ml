@@ -480,6 +480,10 @@ let compile_cfg ppf_dump ~funcnames fd_cmm cfg_with_layout =
           ~stack_slots:(fun x ->
             (Cfg_with_layout.cfg x).Cfg.fun_num_stack_slots)
           ~f:Cfg_available_regs.run)
+  ++ (fun (cfg_with_layout : Cfg_with_layout.t) ->
+  if !Oxcaml_flags.emit_fdo_instrumentation
+  then Extra_debug.mark_calls cfg_with_layout;
+  cfg_with_layout)
   ++ Profile.record ~accumulate:true "cfg_to_linear" Cfg_to_linear.run
 
 let compile_via_llvm ~ppf_dump ~funcnames cfg_with_layout =

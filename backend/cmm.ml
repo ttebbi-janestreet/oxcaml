@@ -601,6 +601,7 @@ type operation =
   | Cdomain_index
   | Cpoll
   | Cpause
+  | Csource_location
 
 type vec128_bits =
   { word0 : int64; (* Least significant *)
@@ -764,8 +765,8 @@ let iter_shallow_tail f = function
       ( ( Calloc _ | Caddi | Csubi | Cmuli | Cdivi | Cmodi | Caddi128 | Csubi128
         | Cmuli64 _ | Cand | Cor | Cxor | Clsl | Clsr | Casr | Cpopcnt | Caddv
         | Cadda | Cpackf32 | Copaque | Cbeginregion | Cendregion | Cdls_get
-        | Ctls_get | Cdomain_index | Cpoll | Cpause | Capply _ | Cextcall _
-        | Cload _
+        | Ctls_get | Cdomain_index | Cpoll | Cpause | Csource_location
+        | Capply _ | Cextcall _ | Cload _
         | Cstore (_, _)
         | Cmulhi _ | Cbswap _ | Ccsel _ | Cclz | Cctz | Cprefetch _ | Catomic _
         | Ccmpi _ | Cnegf _ | Cabsf _ | Caddf _ | Csubf _ | Cmulf _ | Cdivf _
@@ -799,7 +800,7 @@ let map_shallow_tail f = function
           | Csubi128 | Cmuli64 _ | Cand | Cor | Cxor | Clsl | Clsr | Casr
           | Cpopcnt | Caddv | Cadda | Cpackf32 | Copaque | Cbeginregion
           | Cendregion | Cdls_get | Ctls_get | Cdomain_index | Cpoll | Cpause
-          | Capply _ | Cextcall _ | Cload _
+          | Csource_location | Capply _ | Cextcall _ | Cload _
           | Cstore (_, _)
           | Cmulhi _ | Cbswap _ | Ccsel _ | Cclz | Cctz | Cprefetch _
           | Catomic _ | Ccmpi _ | Cnegf _ | Cabsf _ | Caddf _ | Csubf _

@@ -514,6 +514,18 @@ let mk_llvm_flags f =
     Arg.String f,
     " Extra flags to pass to LLVM (like -march or -mtune)" )
 
+let mk_fdo_source_profile f =
+  ( "-fdo-source-profile",
+    Arg.String f,
+    "<file>  Use the source-call-stack profile in <file> to guide optimization"
+  )
+
+let mk_emit_fdo_instrumentation f =
+  ( "-emit-fdo-instrumentation",
+    Arg.Unit f,
+    " Mark inlined call sites with source-location intrinsics so that ocamlfdo\n\
+    \     can decode source call stacks" )
+
 module Flambda2 = Oxcaml_flags.Flambda2
 
 let mk_flambda2_result_types_functors_only f =
@@ -1347,6 +1359,8 @@ module type Oxcaml_options = sig
   val keep_llvmir : unit -> unit
   val llvm_path : string -> unit
   val llvm_flags : string -> unit
+  val fdo_source_profile : string -> unit
+  val emit_fdo_instrumentation : unit -> unit
   val flambda2_debug : unit -> unit
   val no_flambda2_debug : unit -> unit
   val reaper_debug_flags : string -> unit
@@ -1536,6 +1550,8 @@ module Make_oxcaml_options (F : Oxcaml_options) = struct
       mk_keep_llvmir F.keep_llvmir;
       mk_llvm_path F.llvm_path;
       mk_llvm_flags F.llvm_flags;
+      mk_fdo_source_profile F.fdo_source_profile;
+      mk_emit_fdo_instrumentation F.emit_fdo_instrumentation;
       mk_flambda2_debug F.flambda2_debug;
       mk_no_flambda2_debug F.no_flambda2_debug;
       mk_reaper_debug_flags F.reaper_debug_flags;
@@ -1942,6 +1958,8 @@ module Oxcaml_options_impl = struct
   let keep_llvmir () = set' Oxcaml_flags.keep_llvmir ()
   let llvm_path s = Oxcaml_flags.llvm_path := Some s
   let llvm_flags s = Oxcaml_flags.llvm_flags := s
+  let fdo_source_profile s = Oxcaml_flags.fdo_source_profile_path := Some s
+  let emit_fdo_instrumentation = set' Oxcaml_flags.emit_fdo_instrumentation
   let flambda2_debug = set' Oxcaml_flags.Flambda2.debug
   let no_flambda2_debug = clear' Oxcaml_flags.Flambda2.debug
 
@@ -2486,6 +2504,10 @@ module Extra_params = struct
     | "llvm-path" ->
         Oxcaml_flags.llvm_path := Some v;
         true
+    | "fdo-source-profile" ->
+        Oxcaml_flags.fdo_source_profile_path := Some v;
+        true
+    | "emit-fdo-instrumentation" -> set' Oxcaml_flags.emit_fdo_instrumentation
     | "keep-llvmir" -> set' Oxcaml_flags.keep_llvmir
     | "llvm-flags" -> set_string Oxcaml_flags.llvm_flags
     | "flambda2-debug" -> set' Oxcaml_flags.Flambda2.debug

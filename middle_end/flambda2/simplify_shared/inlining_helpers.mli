@@ -29,6 +29,7 @@ val make_inlined_body :
   return_continuation:Continuation.t ->
   apply_exn_continuation:Continuation.t ->
   apply_return_continuation:Flambda.Apply.Result_continuation.t ->
+  apply_dbg:Debuginfo.t ->
   bind_params:
     (params:'param list ->
     args:Simple.List.t ->
@@ -39,6 +40,8 @@ val make_inlined_body :
     rec_info:Rec_info_expr.t ->
     body:'expr_with_acc ->
     'expr_with_acc) ->
+  bind_source_location:
+    (dbg:Debuginfo.t -> body:'expr_with_acc -> 'expr_with_acc) ->
   apply_renaming:('expr_with_acc -> Renaming.t -> 'expr_with_acc) ->
   'expr_with_acc
 

@@ -246,6 +246,7 @@
   signature_group
   cmt_format
   cms_format
+  source_stack_profile
   untypeast
   includemod
   includemod_errorprinter

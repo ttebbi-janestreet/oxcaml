@@ -34,3 +34,11 @@
     to add the extra information to the IR or not, without passing extra
     arguments to [cfg_to_linear] and independently of it.. *)
 val add : Cfg_with_layout.t -> unit
+
+(** Stamp the [fdo] discriminator of OCaml call sites so that ocamlfdo can count
+    calls: actual (non-inlined) calls — the [Call] and tail-call terminators —
+    get one discriminator, and the virtual (inlined) call markers
+    ([Source_location] left by inlining) another. C/runtime calls and probes are
+    not marked. Used by [-emit-fdo-instrumentation]; the discriminators are
+    copied to the emitted [.loc] during [cfg_to_linear]. *)
+val mark_calls : Cfg_with_layout.t -> unit

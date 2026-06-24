@@ -103,6 +103,9 @@ let nullary_exn ~env ~res (f : Flambda_primitive.nullary_primitive) =
   | Enter_inlined_apply _ ->
     (* CR selee: we should eventually use this debuginfo *)
     no_op ~env ~res
+  | Source_location _ ->
+    (* FDO source-location marker; no runtime effect for the JS backend. *)
+    no_op ~env ~res
   | Dls_get -> use_prim' (Extern "caml_domain_dls_get")
   | Tls_get -> use_prim' (Extern "caml_domain_tls_get")
   | Domain_index -> use_prim' (Extern "caml_ml_domain_index")

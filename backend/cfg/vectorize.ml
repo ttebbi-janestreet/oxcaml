@@ -320,6 +320,7 @@ end = struct
     | End_region, _
     | Specific _, _
     | Name_for_debugger _, _
+    | Source_location, _
     | Dls_get, _
     | Tls_get, _
     | Domain_index, _
@@ -820,7 +821,7 @@ end = struct
                   | Floatop (_, _)
                   | Csel _ | Reinterpret_cast _ | Static_cast _
                   | Probe_is_enabled _ | Specific _ | Name_for_debugger _
-                  | Alloc _ ->
+                  | Source_location | Alloc _ ->
                     None))
               | _ -> None
             in
@@ -1047,8 +1048,8 @@ end = struct
           | Begin_region | End_region ->
             (* conservative, don't reorder around region begin/end. *)
             create Arbitrary
-          | Name_for_debugger _ | Dls_get | Tls_get | Domain_index | Poll
-          | Opaque | Pause | Probe_is_enabled _ ->
+          | Name_for_debugger _ | Source_location | Dls_get | Tls_get
+          | Domain_index | Poll | Opaque | Pause | Probe_is_enabled _ ->
             (* conservative, don't reorder around this instruction. *)
             (* CR-someday gyorsh: Poll insertion pass is after the vectorizer.
                Currently, it inserts instruction at the end of a block, so it
@@ -2322,8 +2323,8 @@ end = struct
         | Const_symbol _ | Const_vec128 _ | Const_vec256 _ | Const_vec512 _
         | Stackoffset _ | Intop _ | Int128op _ | Intop_imm _ | Intop_atomic _
         | Floatop _ | Csel _ | Probe_is_enabled _ | Opaque | Pause
-        | Begin_region | End_region | Name_for_debugger _ | Dls_get | Tls_get
-        | Domain_index | Poll ->
+        | Begin_region | End_region | Name_for_debugger _ | Source_location
+        | Dls_get | Tls_get | Domain_index | Poll ->
           None)
 
     let from_block (block : Block.t) deps : t list =

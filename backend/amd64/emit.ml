@@ -2507,6 +2507,10 @@ let emit_instr ~first ~last ~fallthrough i =
     I.mov (domain_field Domainstate.Domain_local_sp) (res i 0)
   | Lop End_region -> I.mov (arg i 0) (domain_field Domainstate.Domain_local_sp)
   | Lop (Name_for_debugger _) -> ()
+  | Lop Source_location ->
+    (* Only the [.loc] directive (emitted from [i.dbg]) matters; the marker
+       itself produces no machine code. *)
+    ()
   | Lcall_op (Lprobe { enabled_at_init; name; handler_code_sym }) ->
     let probe_label = Cmm.new_label () in
     Probe_emission.add_probe ~probe_label ~probe_insn:i ~probe_name:name

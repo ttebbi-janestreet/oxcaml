@@ -18,6 +18,15 @@ val debug_flambda2 : unit -> bool
 
 val debug_reaper : string -> bool
 
+(** The source-call-stack profile requested by [-fdo-source-profile], if any.
+    See {!Oxcaml_flags.fdo_source_profile}. *)
+val fdo_source_profile : unit -> Source_stack_profile.t option
+
+(** Whether [-emit-fdo-instrumentation] is set, requesting source-location
+    markers at inlined call sites. See {!Oxcaml_flags.emit_fdo_instrumentation}.
+*)
+val emit_fdo_instrumentation : unit -> bool
+
 type 'a mode =
   | Normal : [`Normal] mode
   | Classic : [`Classic] mode

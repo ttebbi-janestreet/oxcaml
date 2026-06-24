@@ -22,7 +22,8 @@ module VB = Bound_var
 
 let make_inlined_body ~callee ~called_code_id ~unroll_to ~params ~args
     ~my_closure ~my_alloc_mode ~my_depth ~rec_info ~body ~exn_continuation
-    ~return_continuation ~apply_exn_continuation ~apply_return_continuation =
+    ~return_continuation ~apply_exn_continuation ~apply_return_continuation
+    ~apply_dbg =
   let callee, rec_info =
     match callee with
     | None ->
@@ -78,10 +79,22 @@ let make_inlined_body ~callee ~called_code_id ~unroll_to ~params ~args
       ~body ~free_names_of_body:Unknown
     |> Expr.create_let
   in
+  let bind_source_location ~dbg ~body =
+    let var = Variable.create "source_location" Flambda_kind.value in
+    let bound =
+      Bound_pattern.singleton
+        (VB.create var Flambda_debug_uid.none Name_mode.normal)
+    in
+    Let.create bound
+      (Named.create_prim (Nullary (Source_location { dbg })) Debuginfo.none)
+      ~body ~free_names_of_body:Unknown
+    |> Expr.create_let
+  in
   Inlining_helpers.make_inlined_body ~callee ~called_code_id ~params ~args
     ~my_closure ~my_alloc_mode ~my_depth ~rec_info ~body ~exn_continuation
     ~return_continuation ~apply_exn_continuation ~apply_return_continuation
-    ~bind_params ~bind_depth ~apply_renaming:Expr.apply_renaming
+    ~apply_dbg ~bind_params ~bind_depth ~bind_source_location
+    ~apply_renaming:Expr.apply_renaming
 
 let wrap_inlined_body_for_exn_extra_args ~extra_args ~apply_exn_continuation
     ~apply_return_continuation ~result_arity ~make_inlined_body =
@@ -164,7 +177,7 @@ let inline dacc ~apply ~unroll_to ~was_inline_always function_decl =
             ~region_inlined_into ~unroll_to
             ~params:(Bound_parameters.to_list params)
             ~args ~my_closure ~my_alloc_mode ~my_depth ~rec_info ~body
-            ~exn_continuation ~return_continuation
+            ~exn_continuation ~return_continuation ~apply_dbg:(Apply.dbg apply)
         in
         let expr =
           match Exn_continuation.extra_args apply_exn_continuation with

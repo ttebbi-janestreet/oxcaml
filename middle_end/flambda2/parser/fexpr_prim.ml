@@ -661,6 +661,11 @@ let enter_inlined_apply =
     nullary "%inlined_apply" ~params:param0 (fun _env () ->
         P.Enter_inlined_apply { dbg = Inlined_debuginfo.none }))
 
+let source_location =
+  D.(
+    nullary "%source_location" ~params:param0 (fun _env () ->
+        P.Source_location { dbg = Debuginfo.none }))
+
 let domain_index =
   D.(nullary "%domain_index" ~params:param0 (fun _env () -> P.Domain_index))
 
@@ -1239,6 +1244,7 @@ module OfFlambda = struct
     | Probe_is_enabled { name; enabled_at_init } ->
       probe_is_enabled env (wrap_loc name, enabled_at_init)
     | Enter_inlined_apply { dbg = _ } -> enter_inlined_apply env ()
+    | Source_location { dbg = _ } -> source_location env ()
     | Domain_index -> domain_index env ()
     | Dls_get -> dls_get env ()
     | Tls_get -> tls_get env ()

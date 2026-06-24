@@ -463,13 +463,22 @@ module Inlining = struct
       in
       acc, Expr.apply_renaming body renaming
     in
+    let bind_source_location ~dbg ~body:(acc, body) =
+      let var = Variable.create "source_location" K.value in
+      let var_duid = Flambda_debug_uid.none in
+      Let_with_acc.create acc
+        (Bound_pattern.singleton (VB.create var var_duid Name_mode.normal))
+        (Named.create_prim (Nullary (Source_location { dbg })) Debuginfo.none)
+        ~body
+    in
     let acc, body =
       Inlining_helpers.make_inlined_body ~callee ~called_code_id
         ~region_inlined_into ~params ~args
         ~my_closure:(my_closure, my_closure_duid)
         ~my_alloc_mode ~my_depth ~rec_info ~body:(acc, body) ~exn_continuation
         ~return_continuation ~apply_exn_continuation ~apply_return_continuation
-        ~bind_params ~bind_depth ~apply_renaming
+        ~apply_dbg ~bind_params ~bind_depth ~bind_source_location
+        ~apply_renaming
     in
     let inlined_debuginfo =
       Inlined_debuginfo.create ~called_code_id ~apply_dbg

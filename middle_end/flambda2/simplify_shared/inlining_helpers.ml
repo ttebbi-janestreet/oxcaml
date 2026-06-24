@@ -20,7 +20,7 @@ module RC = Apply.Result_continuation
 let make_inlined_body ~callee ~called_code_id:_ ~region_inlined_into ~params
     ~args ~my_closure ~my_alloc_mode ~my_depth ~rec_info ~body ~exn_continuation
     ~return_continuation ~apply_exn_continuation ~apply_return_continuation
-    ~bind_params ~bind_depth ~apply_renaming =
+    ~apply_dbg ~bind_params ~bind_depth ~bind_source_location ~apply_renaming =
   let renaming = Renaming.empty in
   let renaming =
     match (apply_return_continuation : RC.t) with
@@ -47,6 +47,14 @@ let make_inlined_body ~callee ~called_code_id:_ ~region_inlined_into ~params
           (Renaming.add_variable renaming my_region region)
           my_ghost_region ghost_region
       | Heap -> renaming)
+  in
+  let body =
+    (* Mark the entry of the inlined body with a source-location intrinsic
+       carrying the call site's debug info, so that [ocamlfdo] can reconstruct
+       source call stacks even when the inlined call leaves no other code. *)
+    if Flambda_features.emit_fdo_instrumentation ()
+    then bind_source_location ~dbg:apply_dbg ~body
+    else body
   in
   let body =
     match callee with

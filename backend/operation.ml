@@ -319,6 +319,7 @@ type t =
         provenance : Backend_var.Provenance.t option;
         regs : Reg.t array
       }
+  | Source_location
   | Dls_get
   | Tls_get
   | Domain_index
@@ -365,6 +366,7 @@ let is_pure = function
   | End_region -> false
   | Specific s -> Arch.operation_is_pure s
   | Name_for_debugger _ -> false
+  | Source_location -> false
   | Dls_get -> true
   | Tls_get -> true
   | Domain_index -> true
@@ -460,6 +462,7 @@ let dump ppf op =
   | Begin_region -> Format.fprintf ppf "beginregion"
   | End_region -> Format.fprintf ppf "endregion"
   | Name_for_debugger _ -> Format.fprintf ppf "name_for_debugger"
+  | Source_location -> Format.fprintf ppf "source_location"
   | Dls_get -> Format.fprintf ppf "dls_get"
   | Tls_get -> Format.fprintf ppf "tls_get"
   | Domain_index -> Format.fprintf ppf "domain_index"
@@ -603,6 +606,7 @@ let equal left right =
     && Option.equal Int.equal left_wp right_wp
     && Option.equal Backend_var.Provenance.equal left_prov right_prov
   | Dls_get, Dls_get | Tls_get, Tls_get | Poll, Poll | Pause, Pause -> true
+  | Source_location, Source_location -> true
   | Domain_index, Domain_index -> true
   | Int128op left_op, Int128op right_op ->
     equal_int128_operation left_op right_op
@@ -616,7 +620,7 @@ let equal left right =
       | Stackoffset _ | Load _ | Store _ | Intop _ | Int128op _ | Intop_imm _
       | Intop_atomic _ | Floatop _ | Csel _ | Reinterpret_cast _ | Static_cast _
       | Probe_is_enabled _ | Opaque | Begin_region | End_region | Specific _
-      | Name_for_debugger _ | Dls_get | Tls_get | Domain_index | Poll | Pause
-      | Alloc _ ),
+      | Name_for_debugger _ | Source_location | Dls_get | Tls_get | Domain_index
+      | Poll | Pause | Alloc _ ),
       _ ) ->
     false

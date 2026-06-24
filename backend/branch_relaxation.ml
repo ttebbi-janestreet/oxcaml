@@ -86,7 +86,7 @@ module Make (T : Branch_relaxation_intf.S) = struct
           | Intop_atomic _
           | Floatop (_, _)
           | Csel _ | Reinterpret_cast _ | Static_cast _ | Probe_is_enabled _
-          | Name_for_debugger _ )
+          | Name_for_debugger _ | Source_location )
       | Lprologue | Lepilogue_open | Lepilogue_close | Lend | Lreloadretaddr
       | Lreturn | Lentertrap | Lpoptrap _ | Lcall_op _ | Llabel _ | Lbranch _
       | Lswitch _ | Ladjust_stack_offset _ | Lpushtrap _ | Lraise _ ->
@@ -219,7 +219,7 @@ module Make (T : Branch_relaxation_intf.S) = struct
               | Intop_atomic _
               | Floatop (_, _)
               | Csel _ | Reinterpret_cast _ | Static_cast _ | Probe_is_enabled _
-              | Name_for_debugger _ | Specific _ ) ->
+              | Name_for_debugger _ | Source_location | Specific _ ) ->
             (* Any other instruction has already been rejected in
                [instr_overflows] above. We can *never* get here. *)
             assert false)

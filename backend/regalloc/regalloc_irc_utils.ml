@@ -149,6 +149,7 @@ let is_move_basic : Cfg.basic -> bool =
     | End_region -> false
     | Specific _ -> false
     | Name_for_debugger _ -> false
+    | Source_location -> false
     | Dls_get -> false
     | Tls_get -> false
     | Domain_index -> false

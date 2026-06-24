@@ -1114,6 +1114,10 @@ let nullary_primitive _env res dbg prim =
   | Domain_index -> None, res, C.domain_index ~dbg
   | Poll -> None, res, C.poll ~dbg
   | Cpu_relax -> None, res, C.cpu_relax ~dbg
+  | Source_location { dbg } ->
+    (* Emit the marker carrying the call site's debug info; this lowers to a
+       lone [.loc] directive in the backend, preserved for FDO. *)
+    None, res, Cmm.Cop (Cmm.Csource_location, [], dbg)
 
 let imm_or_ptr : P.Block_access_field_kind.t -> Lambda.immediate_or_pointer =
  fun block_access_kind ->

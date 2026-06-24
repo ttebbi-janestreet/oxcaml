@@ -181,8 +181,17 @@ let rebuild_let simplify_named_result removed_operations ~rewrite_id
                 in
                 not is_used, is_used
             in
+            let is_source_location =
+              (* FDO source-location markers have no effects but must not be
+                 deleted as dead code. *)
+              match[@ocaml.warning "-4"] defining_expr with
+              | Prim (Nullary (Source_location _), _) -> true
+              | Simple _ | Prim _ | Set_of_closures _ | Static_consts _
+              | Rec_info _ ->
+                false
+            in
             let must_be_kept_for_its_effects =
-              is_end_region_for_used_region
+              is_source_location || is_end_region_for_used_region
               || (not is_end_region_for_unused_region)
                  && not (Named.at_most_generative_effects defining_expr)
             in

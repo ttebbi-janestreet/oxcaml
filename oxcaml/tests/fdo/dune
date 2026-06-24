@@ -1,0 +1,14 @@
+; Round-trip tests for the source-call-stack profile reader
+; ([Source_stack_profile] in ocamlcommon).
+
+(executable
+ (name source_stack_profile_test)
+ (modules source_stack_profile_test)
+ (libraries ocamlcommon))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{context_name} "main"))
+ (action
+  (run ./source_stack_profile_test.exe)))
