@@ -255,7 +255,18 @@ let might_inline dacc ~apply ~code_or_metadata ~function_type ~simplify_expr
           let evaluated_to =
             Cost_metrics.evaluate ~args:inlining_args cost_metrics
           in
-          let threshold = Inlining_arguments.threshold inlining_args in
+          let threshold =
+            (* Hot-path inlining: call sites that can reach a [hot_path_to_here
+               ()] marker get a much larger budget. [Apply.hot] is set by the
+               [lambda_to_flambda] prestamp (for markers in the same function)
+               and refreshed by the flow analysis after inlining reveals more
+               markers (see [Flow_analysis.reaches_hot_marker] and the
+               re-simplification triggered in [Simplify_apply_expr]). *)
+            let base = Inlining_arguments.threshold inlining_args in
+            if Apply.hot apply
+            then base *. Flambda_features.Inlining.hot_path_inline_factor ()
+            else base
+          in
           let is_under_inline_threshold =
             Float.compare evaluated_to threshold <= 0
           in

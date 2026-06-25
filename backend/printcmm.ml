@@ -335,7 +335,8 @@ let operation d = function
   | Ctls_get -> "tls_get"
   | Cdomain_index -> "domain_index"
   | Cpoll -> "poll"
-  | Cpause -> "pause"
+  | Chint Pause -> "pause"
+  | Chint Hot_path -> "hot_path"
 
 let rec expr ppf = function
   | Cconst_int (n, _dbg) -> fprintf ppf "%i" n

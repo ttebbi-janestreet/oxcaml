@@ -176,6 +176,8 @@ let continuation_param_aliases t = t.flow_result.aliases_result
 
 let mutable_unboxing_result t = t.flow_result.mutable_unboxing_result
 
+let reaches_hot_marker t = t.flow_result.reaches_hot_marker
+
 let set_resimplify t = { t with resimplify = true }
 
 let resimplify t = t.resimplify

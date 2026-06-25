@@ -64,7 +64,8 @@ let analyze ?(speculative = false) ?print_name ~machine_width
              map;
              extra = _;
              lifted_constants = _;
-             dummy_toplevel_cont
+             dummy_toplevel_cont;
+             hot_marker_conts
            } as t) =
         Flow_acc.normalize_acc ~specialization_map t
       in
@@ -133,6 +134,32 @@ let analyze ?(speculative = false) ?print_name ~machine_width
           reference_result.T.Mutable_unboxing_result.additional_epa
           dead_variable_result.required_names
       in
+      (* Hot-path inlining: a continuation reaches a [Hot_path] marker if its
+         handler binds one (a seed in [hot_marker_conts]) or it can transfer
+         control to a continuation that reaches one. So the set of
+         marker-reaching continuations is the seeds closed under "callers":
+         starting from the seeds, repeatedly add the callers of everything in
+         the set until it stops growing. The graphs are per-function and markers
+         are rare, so a naive saturation is fine. *)
+      let reaches_hot_marker =
+        let callers k =
+          match Continuation.Map.find k control.Control_flow_graph.callers with
+          | exception Not_found -> Continuation.Set.empty
+          | callers -> callers
+        in
+        let add_callers reached =
+          Continuation.Set.fold
+            (fun k acc -> Continuation.Set.union acc (callers k))
+            reached reached
+        in
+        let rec saturate reached =
+          let reached' = add_callers reached in
+          if Continuation.Set.equal reached reached'
+          then reached
+          else saturate reached'
+        in
+        saturate hot_marker_conts
+      in
       let result =
         T.Flow_result.
           { data_flow_result =
@@ -140,7 +167,8 @@ let analyze ?(speculative = false) ?print_name ~machine_width
                 required_names = required_names_after_ref_reference_analysis
               };
             aliases_result = { aliases_kind; continuation_parameters };
-            mutable_unboxing_result = reference_result
+            mutable_unboxing_result = reference_result;
+            reaches_hot_marker
           }
       in
       if Flambda_features.dump_flow ()

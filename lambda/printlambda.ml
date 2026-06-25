@@ -878,6 +878,7 @@ let primitive ppf = function
   | Ptls_get -> fprintf ppf "tls_get"
   | Pdomain_index -> fprintf ppf "domain_index"
   | Pcpu_relax -> fprintf ppf "cpu_relax"
+  | Phot_path -> fprintf ppf "hot_path_to_here"
   | Pprobe_is_enabled {name} -> fprintf ppf "probe_is_enabled[%s]" name
   | Pobj_dup -> fprintf ppf "obj_dup"
   | Pobj_magic _ -> fprintf ppf "obj_magic"
@@ -1069,6 +1070,7 @@ let name_of_primitive = function
   | Patomic_lor_field -> "Patomic_lor_field"
   | Patomic_lxor_field -> "Patomic_lxor_field"
   | Pcpu_relax -> "Pcpu_relax"
+  | Phot_path -> "Phot_path"
   | Popaque _ -> "Popaque"
   | Pwith_stack -> "Pwith_stack"
   | Pwith_stack_bind -> "Pwith_stack_bind"

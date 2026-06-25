@@ -1310,7 +1310,7 @@ let close_primitive acc env ~let_bound_ids_with_kinds named
       | Pdomain_index | Ppoll | Patomic_load_field _ | Patomic_set_field _
       | Preinterpret_tagged_int63_as_unboxed_int64
       | Preinterpret_unboxed_int64_as_tagged_int63 | Ppeek _ | Ppoke _
-      | Pscalar _ | Pphys_equal _ | Pcpu_relax ->
+      | Pscalar _ | Pphys_equal _ | Pcpu_relax | Phot_path ->
         (* Inconsistent with outer match *)
         assert false
     in

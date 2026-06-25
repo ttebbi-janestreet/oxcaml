@@ -1595,7 +1595,8 @@ let emit_instr env i =
   | Lop End_region ->
     A.ins2 STR (H.reg_x i.arg.(0)) (H.domainstate_field Domain_local_sp)
   | Lop Poll -> assembly_code_for_poll env i ~far:false ~return_label:None
-  | Lop Pause -> A.ins0 YIELD
+  | Lop (Hint Cmm.Pause) -> A.ins0 YIELD
+  | Lop (Hint Cmm.Hot_path) -> () (* hot-path marker: emits no code *)
   | Lop (Specific Ifar_poll) ->
     assembly_code_for_poll env i ~far:true ~return_label:None
   | Lop (Intop_imm (Iadd, n)) ->

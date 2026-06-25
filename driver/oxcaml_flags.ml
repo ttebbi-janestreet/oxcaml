@@ -460,6 +460,10 @@ module Flambda2 = struct
 
     let report_bin = ref false
 
+    (* Multiplier applied to the inlining threshold at call sites on a hot path
+       (those that can reach a [hot_path_to_here ()] marker). *)
+    let hot_path_inline_factor = ref 10.
+
     let use_inlining_arguments_set ?round (arg : inlining_arguments) =
       let set_int = Clflags.set_int_arg round in
       let set_float = Clflags.set_float_arg round in

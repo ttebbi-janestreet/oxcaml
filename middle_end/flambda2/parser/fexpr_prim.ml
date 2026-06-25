@@ -673,6 +673,9 @@ let poll = D.(nullary "%poll" ~params:param0 (fun _env () -> P.Poll))
 let cpu_relax =
   D.(nullary "%cpu_relax" ~params:param0 (fun _env () -> P.Cpu_relax))
 
+let hot_path =
+  D.(nullary "%hot_path_to_here" ~params:param0 (fun _env () -> P.Hot_path))
+
 (* Unaries *)
 let block_load =
   D.(
@@ -1244,6 +1247,7 @@ module OfFlambda = struct
     | Tls_get -> tls_get env ()
     | Poll -> poll env ()
     | Cpu_relax -> cpu_relax env ()
+    | Hot_path -> hot_path env ()
 
   let unop env (op : P.unary_primitive) =
     match op with

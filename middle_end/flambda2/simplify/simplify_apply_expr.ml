@@ -182,8 +182,8 @@ let simplify_direct_tuple_application ~simplify_expr dacc apply
   simplify_expr dacc expr ~down_to_up
 
 let rebuild_non_inlined_direct_full_application apply ~use_id ~exn_cont_use_id
-    ~result_arity ~coming_from_indirect ~callee's_code_metadata:_ uacc
-    ~after_rebuild =
+    ~result_arity ~coming_from_indirect ~callee's_code_metadata:_
+    ~callee_code_unavailable uacc ~after_rebuild =
   let uacc =
     if coming_from_indirect
     then
@@ -206,13 +206,59 @@ let rebuild_non_inlined_direct_full_application apply ~use_id ~exn_cont_use_id
    *     && not (Code_metadata.is_my_closure_used callee's_code_metadata)
    * in *)
   let apply = if erase_callee then Apply.erase_callee apply else apply in
+  (* Hot-path inlining: if this (not-inlined) direct call can reach a
+     [hot_path_to_here ()] marker -- either via its return continuation (normal
+     completion) or via its exception continuation (the call raises into a
+     handler that reaches a marker) -- mark it hot. The flip raises the
+     [resimplify] flag so the function body is simplified again (see
+     [Simplify_set_of_closures]); on that pass the call is given the larger
+     hot-path inlining budget. Markers revealed by inlining in one pass thus
+     drive inlining in the next. *)
+  let apply, uacc =
+    let reaches_hot_marker = UA.reaches_hot_marker uacc in
+    let return_reaches_marker =
+      match Apply.continuation apply with
+      | Apply.Result_continuation.Return k ->
+        Continuation.Set.mem k reaches_hot_marker
+      | Apply.Result_continuation.Never_returns -> false
+    in
+    let exn_reaches_marker =
+      Continuation.Set.mem
+        (Exn_continuation.exn_handler (Apply.exn_continuation apply))
+        reaches_hot_marker
+    in
+    if (not (Apply.hot apply)) && (return_reaches_marker || exn_reaches_marker)
+    then begin
+      (* The call has just transitioned cold -> hot. If the callee's code is
+         unavailable it can never be inlined despite being hot, so warn -- here
+         at the transition (which happens exactly once per call) rather than in
+         the down pass, which re-runs on every re-simplification round and would
+         repeat the warning. *)
+      if callee_code_unavailable
+      then
+        Location.prerr_warning
+          (Debuginfo.to_location (Apply.dbg apply))
+          (Warnings.Inlining_impossible
+             "this call is on a hot path (it can reach a [hot_path_to_here ()] \
+              marker) but the callee could not be inlined because its code is \
+              unavailable; add [@inline available] to the callee's definition \
+              to make it inlinable across compilation units");
+      Apply.with_hot apply true, UA.set_resimplify uacc
+    end
+    else apply, uacc
+  in
   let uacc, expr =
     EB.rewrite_fixed_arity_apply uacc ~use_id result_arity apply
   in
   after_rebuild expr uacc
 
 type inlining_decision =
-  | Do_not_inline of { erase_attribute : bool }
+  | Do_not_inline of
+      { erase_attribute : bool;
+        callee_code_unavailable : bool
+            (* [true] iff the decision was [Missing_code] (the callee's code is
+               not available for inlining): used to warn if the call is hot. *)
+      }
   | Inline of DA.t * Expr.t
 
 (* CR vlaviron: fetch [params_arity], [result_arity] and [result_types] from
@@ -224,7 +270,7 @@ let simplify_direct_full_application ~simplify_expr dacc apply function_type
     match function_type with
     | None ->
       (* No rec info available, prevent inlining to avoid problems *)
-      Do_not_inline { erase_attribute = false }
+      Do_not_inline { erase_attribute = false; callee_code_unavailable = false }
     | Some function_type -> (
       let decision =
         Call_site_inlining_decision.make_decision dacc ~simplify_expr ~apply
@@ -244,9 +290,21 @@ let simplify_direct_full_application ~simplify_expr dacc apply function_type
           ~tracker:(DE.inlining_history_tracker (DA.denv dacc))
           ~are_rebuilding_terms:(DA.are_rebuilding_terms dacc)
           ~apply decision;
+      (* [Missing_code] means the callee's code is not available for inlining
+         (e.g. compiled in another unit without being exported for inlining).
+         A hot call to such a callee is warned about in
+         [rebuild_non_inlined_direct_full_application]. *)
+      let callee_code_unavailable =
+        match[@ocaml.warning "-4"] decision with
+        | Missing_code -> true
+        | _ -> false
+      in
       match Call_site_inlining_decision_type.can_inline decision with
       | Do_not_inline { erase_attribute_if_ignored } ->
-        Do_not_inline { erase_attribute = erase_attribute_if_ignored }
+        Do_not_inline
+          { erase_attribute = erase_attribute_if_ignored;
+            callee_code_unavailable
+          }
       | Inline { unroll_to; was_inline_always } ->
         let dacc =
           DA.map_denv dacc ~f:(DE.record_inlining_decision ~apply decision)
@@ -259,7 +317,7 @@ let simplify_direct_full_application ~simplify_expr dacc apply function_type
   in
   match inlined with
   | Inline (dacc, inlined) -> simplify_expr dacc inlined ~down_to_up
-  | Do_not_inline { erase_attribute } -> (
+  | Do_not_inline { erase_attribute; callee_code_unavailable } -> (
     let apply =
       let inlined : Inlined_attribute.t =
         if erase_attribute
@@ -379,7 +437,7 @@ let simplify_direct_full_application ~simplify_expr dacc apply function_type
         ~rebuild:
           (rebuild_non_inlined_direct_full_application apply ~use_id
              ~exn_cont_use_id ~result_arity ~coming_from_indirect
-             ~callee's_code_metadata))
+             ~callee's_code_metadata ~callee_code_unavailable))
 
 (* CR mshinwell: need to work out what to do for local alloc transformations
    when there are zero args. *)
@@ -606,7 +664,7 @@ let simplify_direct_partial_application ~simplify_expr dacc apply
             Apply.create ~callee ~continuation:(Return return_continuation)
               exn_continuation ~args ~args_arity:param_arity
               ~return_arity:result_arity ~call_kind ~alloc_mode:my_alloc_mode
-              dbg ~inlined:Default_inlined
+              ~hot:(Apply.hot apply) dbg ~inlined:Default_inlined
               ~inlining_state:(Apply.inlining_state apply)
               ~position:Normal ~probe:None
               ~relative_history:Inlining_history.Relative.empty
@@ -1217,6 +1275,7 @@ let simplify_apply_shared dacc apply : _ simplify_apply_shared_result =
         ~args ~args_arity:(Apply.args_arity apply)
         ~return_arity:(Apply.return_arity apply)
         ~call_kind:(Apply.call_kind apply) ~alloc_mode:(Apply.alloc_mode apply)
+        ~hot:(Apply.hot apply)
         (DE.add_inlined_debuginfo (DA.denv dacc) (Apply.dbg apply))
         ~inlined:(Apply.inlined apply) ~inlining_state
         ~probe:(Apply.probe apply) ~position:(Apply.position apply)

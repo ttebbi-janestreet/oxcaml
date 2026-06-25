@@ -35,7 +35,8 @@ let empty () =
       map = Continuation.Map.empty;
       extra = Continuation.Map.empty;
       lifted_constants = Lifted_constant_state.empty;
-      dummy_toplevel_cont = wrong_dummy_toplevel_cont
+      dummy_toplevel_cont = wrong_dummy_toplevel_cont;
+      hot_marker_conts = Continuation.Set.empty
     }
   in
   res
@@ -102,6 +103,17 @@ let update_top_of_stack ~(t : t) ~f =
   match t.stack with
   | [] -> Misc.fatal_errorf "Empty stack of variable uses"
   | elt :: stack -> { t with stack = f elt :: stack }
+
+(* Record that the current continuation handler binds a [hot_path_to_here ()]
+   marker. This seeds the hot-path reachability in [Flow_analysis]. *)
+let record_hot_marker (t : t) =
+  match t.stack with
+  | [] -> assert false
+  | elt :: _ ->
+    { t with
+      hot_marker_conts =
+        Continuation.Set.add elt.continuation t.hot_marker_conts
+    }
 
 let record_defined_var var t =
   update_top_of_stack ~t ~f:(fun elt ->
@@ -354,6 +366,13 @@ let record_let_binding ~rewrite_id ~generate_phantom_lets ~let_bound
       record_var_alias var simple t
     | Set_of_closures _ | Rec_info _ -> record_var_bindings t free_names
     | Prim (original_prim, _) -> (
+      (* Hot-path inlining: record that the current continuation handler binds a
+         [hot_path_to_here ()] marker. *)
+      let t =
+        match[@ocaml.warning "-4"] original_prim with
+        | Nullary Hot_path -> record_hot_marker t
+        | _ -> t
+      in
       let bound_var = Bound_pattern.must_be_singleton let_bound in
       let var = Bound_var.var bound_var in
       match[@ocaml.warning "-4"] original_prim with

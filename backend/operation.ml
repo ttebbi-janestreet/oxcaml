@@ -323,7 +323,7 @@ type t =
   | Tls_get
   | Domain_index
   | Poll
-  | Pause
+  | Hint of Cmm.hint_kind
   | Alloc of
       { bytes : int;
         dbginfo : Cmm.alloc_dbginfo;
@@ -369,7 +369,7 @@ let is_pure = function
   | Tls_get -> true
   | Domain_index -> true
   | Poll -> false
-  | Pause -> false
+  | Hint _ -> false
   | Alloc _ -> false
 
 (* The next 2 functions are copied almost as is from asmcomp/printmach.ml
@@ -464,7 +464,8 @@ let dump ppf op =
   | Tls_get -> Format.fprintf ppf "tls_get"
   | Domain_index -> Format.fprintf ppf "domain_index"
   | Poll -> Format.fprintf ppf "poll"
-  | Pause -> Format.fprintf ppf "pause"
+  | Hint Cmm.Pause -> Format.fprintf ppf "pause"
+  | Hint Cmm.Hot_path -> Format.fprintf ppf "hot_path"
   | Alloc { bytes; dbginfo = _; mode = Heap } ->
     Format.fprintf ppf "alloc %i" bytes
   | Alloc { bytes; dbginfo = _; mode = Local } ->
@@ -602,7 +603,8 @@ let equal left right =
     Ident.same left_ident right_ident
     && Option.equal Int.equal left_wp right_wp
     && Option.equal Backend_var.Provenance.equal left_prov right_prov
-  | Dls_get, Dls_get | Tls_get, Tls_get | Poll, Poll | Pause, Pause -> true
+  | Dls_get, Dls_get | Tls_get, Tls_get | Poll, Poll -> true
+  | Hint left_kind, Hint right_kind -> Cmm.equal_hint_kind left_kind right_kind
   | Domain_index, Domain_index -> true
   | Int128op left_op, Int128op right_op ->
     equal_int128_operation left_op right_op
@@ -616,7 +618,7 @@ let equal left right =
       | Stackoffset _ | Load _ | Store _ | Intop _ | Int128op _ | Intop_imm _
       | Intop_atomic _ | Floatop _ | Csel _ | Reinterpret_cast _ | Static_cast _
       | Probe_is_enabled _ | Opaque | Begin_region | End_region | Specific _
-      | Name_for_debugger _ | Dls_get | Tls_get | Domain_index | Poll | Pause
+      | Name_for_debugger _ | Dls_get | Tls_get | Domain_index | Poll | Hint _
       | Alloc _ ),
       _ ) ->
     false

@@ -323,6 +323,8 @@ module Flambda2 : sig
     val speculative_inlining_track_lifted_constants : bool ref
 
     val report_bin : bool ref
+
+    val hot_path_inline_factor : float ref
   end
 end
 

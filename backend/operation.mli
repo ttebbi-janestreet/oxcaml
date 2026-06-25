@@ -176,7 +176,7 @@ type t =
   | Tls_get
   | Domain_index
   | Poll
-  | Pause
+  | Hint of Cmm.hint_kind
   | Alloc of
       { bytes : int;
         dbginfo : Cmm.alloc_dbginfo;

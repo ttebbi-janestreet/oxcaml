@@ -518,6 +518,15 @@ let equal_symbol { sym_name = left_sym_name; sym_global = left_sym_global }
   String.equal left_sym_name right_sym_name
   && equal_is_global left_sym_global right_sym_global
 
+type hint_kind =
+  | Pause
+  | Hot_path
+
+let equal_hint_kind (l : hint_kind) (r : hint_kind) =
+  match l, r with
+  | Pause, Pause | Hot_path, Hot_path -> true
+  | (Pause | Hot_path), _ -> false
+
 type operation =
   | Capply of
       { result_type : machtype;
@@ -600,7 +609,7 @@ type operation =
   | Ctls_get
   | Cdomain_index
   | Cpoll
-  | Cpause
+  | Chint of hint_kind
 
 type vec128_bits =
   { word0 : int64; (* Least significant *)
@@ -764,7 +773,7 @@ let iter_shallow_tail f = function
       ( ( Calloc _ | Caddi | Csubi | Cmuli | Cdivi | Cmodi | Caddi128 | Csubi128
         | Cmuli64 _ | Cand | Cor | Cxor | Clsl | Clsr | Casr | Cpopcnt | Caddv
         | Cadda | Cpackf32 | Copaque | Cbeginregion | Cendregion | Cdls_get
-        | Ctls_get | Cdomain_index | Cpoll | Cpause | Capply _ | Cextcall _
+        | Ctls_get | Cdomain_index | Cpoll | Chint _ | Capply _ | Cextcall _
         | Cload _
         | Cstore (_, _)
         | Cmulhi _ | Cbswap _ | Ccsel _ | Cclz | Cctz | Cprefetch _ | Catomic _
@@ -798,7 +807,7 @@ let map_shallow_tail f = function
         ( ( Calloc _ | Caddi | Csubi | Cmuli | Cdivi | Cmodi | Caddi128
           | Csubi128 | Cmuli64 _ | Cand | Cor | Cxor | Clsl | Clsr | Casr
           | Cpopcnt | Caddv | Cadda | Cpackf32 | Copaque | Cbeginregion
-          | Cendregion | Cdls_get | Ctls_get | Cdomain_index | Cpoll | Cpause
+          | Cendregion | Cdls_get | Ctls_get | Cdomain_index | Cpoll | Chint _
           | Capply _ | Cextcall _ | Cload _
           | Cstore (_, _)
           | Cmulhi _ | Cbswap _ | Ccsel _ | Cclz | Cctz | Cprefetch _

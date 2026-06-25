@@ -249,7 +249,7 @@ let oper_result_type = function
   | Cprobe _ -> typ_void
   | Cprobe_is_enabled _ -> typ_int
   | Copaque -> typ_val
-  | Cpoll | Cpause -> typ_void
+  | Cpoll | Chint _ -> typ_void
   | Cbeginregion ->
     (* This must not be typ_val; the begin-region operation returns a naked
        pointer into the local allocation stack. *)
@@ -551,7 +551,7 @@ module Stack_offset_and_exn = struct
         | Load _ | Store _ | Intop _ | Int128op _ | Intop_imm _ | Intop_atomic _
         | Floatop _ | Csel _ | Static_cast _ | Reinterpret_cast _
         | Probe_is_enabled _ | Opaque | Begin_region | End_region | Specific _
-        | Name_for_debugger _ | Dls_get | Tls_get | Domain_index | Poll | Pause
+        | Name_for_debugger _ | Dls_get | Tls_get | Domain_index | Poll | Hint _
         | Alloc _ )
     | Reloadretaddr | Prologue | Epilogue ->
       stack_offset, traps

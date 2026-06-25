@@ -657,6 +657,7 @@
   cfg_cse
   cfg_cse_target_intf
   cfg_stack_checks
+  cfg_hot_path
   cfg_polling
   cfg_simplify
   cfg_prologue

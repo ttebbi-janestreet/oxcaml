@@ -194,7 +194,8 @@ module Acc = struct
       map : Continuation_info.t Continuation.Map.t;
       extra : Continuation_extra_params_and_args.t Continuation.Map.t;
       lifted_constants : Lifted_constant_state.t;
-      dummy_toplevel_cont : Continuation.t
+      dummy_toplevel_cont : Continuation.t;
+      hot_marker_conts : Continuation.Set.t
     }
 
   let print_stack ppf stack =
@@ -209,7 +210,8 @@ module Acc = struct
     Continuation.Map.print Continuation_extra_params_and_args.print ppf extra
 
   let [@ocamlformat "disable"] print ppf
-      { stack; map; extra; lifted_constants; dummy_toplevel_cont = _ } =
+      { stack; map; extra; lifted_constants; dummy_toplevel_cont = _;
+        hot_marker_conts = _ } =
     Format.fprintf ppf
       "@[<hov 1>(\
        @[<hov 1>(stack %a)@]@ \
@@ -346,11 +348,13 @@ module Flow_result = struct
   type t =
     { data_flow_result : Data_flow_result.t;
       aliases_result : Alias_result.t;
-      mutable_unboxing_result : Mutable_unboxing_result.t
+      mutable_unboxing_result : Mutable_unboxing_result.t;
+      reaches_hot_marker : Continuation.Set.t
     }
 
   let [@ocamlformat "disable"] print ppf
-      { data_flow_result; aliases_result; mutable_unboxing_result; } =
+      { data_flow_result; aliases_result; mutable_unboxing_result;
+        reaches_hot_marker = _ } =
     Format.fprintf ppf
       "@[<hov 1>(\
          @[<hov 1>(data_flow_result@ %a)@]@ \

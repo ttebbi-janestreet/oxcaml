@@ -18,7 +18,7 @@ let operation : Operation.t -> int =
   | Tls_get -> 7
   | Domain_index -> 8
   | Poll -> 9
-  | Pause -> 10
+  | Hint Cmm.Pause -> 10
   | Const_int _ -> 11
   | Const_float32 _ -> 12
   | Const_float _ -> 13
@@ -41,6 +41,7 @@ let operation : Operation.t -> int =
   | Specific _ -> 30
   | Name_for_debugger _ -> 31
   | Alloc _ -> 32
+  | Hint Cmm.Hot_path -> 33
 
 let basic : Cfg.basic -> int = function
   | Op op -> operation op

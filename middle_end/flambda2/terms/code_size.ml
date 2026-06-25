@@ -395,6 +395,7 @@ let nullary_prim_size prim =
   | Tls_get -> 1
   | Domain_index -> 1
   | Poll | Cpu_relax -> alloc_size
+  | Hot_path -> 0
 
 let unary_prim_size ~machine_width prim =
   match (prim : Flambda_primitive.unary_primitive) with

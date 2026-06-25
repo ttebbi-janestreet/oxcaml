@@ -416,6 +416,12 @@ type symbol =
 
 val equal_symbol : symbol -> symbol -> bool
 
+type hint_kind =
+  | Pause  (** Arch-specific pause/yield, used to spin on memory. *)
+  | Hot_path  (** OxCaml hot-path marker (affects inlining and code layout). *)
+
+val equal_hint_kind : hint_kind -> hint_kind -> bool
+
 type operation =
   | Capply of
       { result_type : machtype;
@@ -505,7 +511,7 @@ type operation =
   | Ctls_get
   | Cdomain_index
   | Cpoll
-  | Cpause
+  | Chint of hint_kind
 
 (* SIMD vectors are untyped in the backend. This record holds the bitwise
    representation of a 128-bit value. [word0] is the least significant word. *)

@@ -1,0 +1,131 @@
+File "hot_path_warning.ml", line 38, characters 2-18:
+38 |   not_inlinable () (* HOT *);
+       ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 47, characters 4-20:
+47 |     not_inlinable () (* HOT *);
+         ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 67, characters 8-24:
+67 |    then not_inlinable () (* HOT *)
+             ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 68, characters 8-24:
+68 |    else not_inlinable () (* HOT *););
+             ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 65, characters 2-18:
+65 |   not_inlinable () (* HOT *);
+       ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 76, characters 4-20:
+76 |     not_inlinable () (* HOT *);
+         ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 84, characters 4-20:
+84 |     not_inlinable () (* HOT *);
+         ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 95, characters 4-20:
+95 |     not_inlinable () (* HOT *);
+         ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 102, characters 4-20:
+102 |     not_inlinable () (* HOT *);
+          ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 113, characters 4-20:
+113 |     not_inlinable () (* HOT (reaches the marker on the next iteration) *);
+          ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 122, characters 5-21:
+122 |      not_inlinable () (* HOT *)
+           ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 133, characters 4-20:
+133 |     not_inlinable () (* HOT *);
+          ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 131, characters 6-22:
+131 |   try not_inlinable () (* HOT (can raise into the hot handler) *)
+            ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 141, characters 29-45:
+141 |   let[@inline always] w () = not_inlinable () (* HOT via cascade *) in
+                                   ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 152, characters 33-49:
+152 |   let[@inline always] inner () = not_inlinable () (* HOT via cascade *) in
+                                       ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 161, characters 34-50:
+161 |     if Sys.opaque_identity c then not_inlinable () (* HOT via cascade *) else ()
+                                        ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 176, characters 2-18:
+176 |   not_inlinable () (* HOT (revealed after [mark] is inlined) *);
+        ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 187, characters 5-21:
+187 |     (not_inlinable () (* HOT: precedes the marker in the inlined continuation *);
+           ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 198, characters 6-22:
+198 |       not_inlinable () (* HOT *);
+            ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 203, characters 2-18:
+203 |   not_inlinable () (* HOT *);
+        ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 213, characters 9-25:
+213 |     else not_inlinable () (* HOT *)
+               ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units
+
+File "hot_path_warning.ml", line 210, characters 6-22:
+210 |       not_inlinable () (* HOT *);
+            ^^^^^^^^^^^^^^^^
+Warning 55 [inlining-impossible]: Cannot inline:
+  this call is on a hot path (it can reach a [hot_path_to_here ()] marker) but the callee could not be inlined because its code is unavailable; add [@inline available] to the callee's definition to make it inlinable across compilation units

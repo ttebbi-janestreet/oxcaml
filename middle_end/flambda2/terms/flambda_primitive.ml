@@ -1068,10 +1068,11 @@ type nullary_primitive =
   | Domain_index
   | Poll
   | Cpu_relax
+  | Hot_path
 
 let nullary_primitive_eligible_for_cse = function
   | Invalid _ | Optimised_out _ | Probe_is_enabled _ | Enter_inlined_apply _
-  | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax ->
+  | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax | Hot_path ->
     false
 
 let compare_nullary_primitive p1 p2 =
@@ -1086,6 +1087,7 @@ let compare_nullary_primitive p1 p2 =
     | Domain_index -> 6
     | Poll -> 7
     | Cpu_relax -> 8
+    | Hot_path -> 9
   in
   match p1, p2 with
   | Invalid k1, Invalid k2 -> K.compare k1 k2
@@ -1103,8 +1105,9 @@ let compare_nullary_primitive p1 p2 =
   | Domain_index, Domain_index -> 0
   | Poll, Poll -> 0
   | Cpu_relax, Cpu_relax -> 0
+  | Hot_path, Hot_path -> 0
   | ( ( Invalid _ | Optimised_out _ | Probe_is_enabled _ | Enter_inlined_apply _
-      | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax ),
+      | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax | Hot_path ),
       _ ) ->
     Int.compare
       (nullary_primitive_numbering p1)
@@ -1133,6 +1136,7 @@ let print_nullary_primitive ppf p =
   | Domain_index -> Format.pp_print_string ppf "Domain_index"
   | Poll -> Format.pp_print_string ppf "Poll"
   | Cpu_relax -> Format.pp_print_string ppf "Cpu_relax"
+  | Hot_path -> Format.pp_print_string ppf "Hot_path"
 
 let result_kind_of_nullary_primitive p : result_kind =
   match p with
@@ -1142,7 +1146,7 @@ let result_kind_of_nullary_primitive p : result_kind =
   | Enter_inlined_apply _ -> Unit
   | Dls_get | Tls_get -> Singleton K.value
   | Domain_index -> Singleton K.naked_immediate
-  | Poll | Cpu_relax -> Unit
+  | Poll | Cpu_relax | Hot_path -> Unit
 
 let coeffects_of_mode : Alloc_mode.For_allocations.t -> Coeffects.t = function
   | Local _ -> Coeffects.Has_coeffects
@@ -1164,13 +1168,15 @@ let effects_and_coeffects_of_nullary_primitive p : Effects_and_coeffects.t =
     Arbitrary_effects, Has_coeffects, Strict, Can't_move_before_any_branch
   | Dls_get | Tls_get | Domain_index ->
     No_effects, Has_coeffects, Strict, Can't_move_before_any_branch
-  | Poll | Cpu_relax ->
+  | Poll | Cpu_relax | Hot_path ->
+    (* Like [Poll]/[Cpu_relax]: a no-op marker that must never be deleted, moved
+       or CSE'd, so that the hot-path signal reaches the backend. *)
     Arbitrary_effects, Has_coeffects, Strict, Can't_move_before_any_branch
 
 let nullary_classify_for_printing p =
   match p with
   | Invalid _ | Optimised_out _ | Probe_is_enabled _ | Enter_inlined_apply _
-  | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax ->
+  | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax | Hot_path ->
     Neither
 
 module Reinterpret_64_bit_word = struct
@@ -2698,7 +2704,7 @@ let free_names t =
   match t with
   | Nullary
       ( Invalid _ | Optimised_out _ | Probe_is_enabled _ | Enter_inlined_apply _
-      | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax ) ->
+      | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax | Hot_path ) ->
     Name_occurrences.empty
   | Unary (prim, x0) ->
     Name_occurrences.union
@@ -2732,7 +2738,7 @@ let apply_renaming t renaming =
   match t with
   | Nullary
       ( Invalid _ | Optimised_out _ | Probe_is_enabled _ | Enter_inlined_apply _
-      | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax ) ->
+      | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax | Hot_path ) ->
     t
   | Unary (prim, x0) ->
     let prim' = apply_renaming_unary_primitive prim renaming in
@@ -2771,7 +2777,7 @@ let ids_for_export t =
   match t with
   | Nullary
       ( Invalid _ | Optimised_out _ | Probe_is_enabled _ | Enter_inlined_apply _
-      | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax ) ->
+      | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax | Hot_path ) ->
     Ids_for_export.empty
   | Unary (prim, x0) ->
     Ids_for_export.union

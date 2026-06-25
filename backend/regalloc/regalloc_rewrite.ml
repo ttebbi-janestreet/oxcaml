@@ -89,7 +89,7 @@ let coalesce_temp_spills_and_reloads (block : Cfg.basic_block)
     | Stack_check _
     | Op
         ( Move | Opaque | Begin_region | End_region | Dls_get | Tls_get
-        | Domain_index | Poll | Pause | Const_int _ | Const_float32 _
+        | Domain_index | Poll | Hint _ | Const_int _ | Const_float32 _
         | Const_float _ | Const_symbol _ | Const_vec128 _ | Const_vec256 _
         | Const_vec512 _ | Stackoffset _ | Load _
         | Store (_, _, _)

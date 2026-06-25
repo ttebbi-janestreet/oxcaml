@@ -862,6 +862,13 @@ let mk_flambda2_expert_cont_spec_threshold f =
       " Aggressiveness of continuation specialization, similar to  the inline \
        threshold." )
 
+let mk_flambda2_hot_path_inline_factor f =
+  ( "-flambda2-hot-path-inline-factor",
+    Arg.Float f,
+    Printf.sprintf
+      " Multiplier applied to the inlining threshold at call sites on a hot \
+       path (those reaching a [hot_path_to_here ()] marker)" )
+
 let mk_flambda2_debug_concrete_types_only_on_canonicals f =
   ( "-flambda2-debug-concrete-types-only-on-canonicals",
     Arg.Unit f,
@@ -1393,6 +1400,7 @@ module type Oxcaml_options = sig
   val no_flambda2_expert_shorten_symbol_names : unit -> unit
   val flambda2_expert_cont_lifting_budget : int -> unit
   val flambda2_expert_cont_spec_threshold : float -> unit
+  val flambda2_hot_path_inline_factor : float -> unit
   val flambda2_debug_concrete_types_only_on_canonicals : unit -> unit
   val no_flambda2_debug_concrete_types_only_on_canonicals : unit -> unit
   val flambda2_debug_keep_invalid_handlers : unit -> unit
@@ -1600,6 +1608,7 @@ module Make_oxcaml_options (F : Oxcaml_options) = struct
         F.flambda2_expert_cont_lifting_budget;
       mk_flambda2_expert_cont_spec_threshold
         F.flambda2_expert_cont_spec_threshold;
+      mk_flambda2_hot_path_inline_factor F.flambda2_hot_path_inline_factor;
       mk_flambda2_debug_concrete_types_only_on_canonicals
         F.flambda2_debug_concrete_types_only_on_canonicals;
       mk_no_flambda2_debug_concrete_types_only_on_canonicals
@@ -2069,6 +2078,9 @@ module Oxcaml_options_impl = struct
 
   let flambda2_expert_cont_spec_threshold threshold =
     Flambda2.Expert.cont_spec_threshold := Oxcaml_flags.Set threshold
+
+  let flambda2_hot_path_inline_factor factor =
+    Flambda2.Inlining.hot_path_inline_factor := factor
 
   let flambda2_debug_concrete_types_only_on_canonicals =
     set' Flambda2.Debug.concrete_types_only_on_canonicals
@@ -2549,6 +2561,11 @@ module Extra_params = struct
         | Some i ->
             Flambda2.Expert.cont_spec_threshold :=
               Oxcaml_flags.Set (Float.of_int i)
+        | None -> ());
+        true
+    | "flambda2-hot-path-inline-factor" ->
+        (match float_of_string_opt v with
+        | Some f -> Flambda2.Inlining.hot_path_inline_factor := f
         | None -> ());
         true
     | "flambda2-inline-max-depth" ->

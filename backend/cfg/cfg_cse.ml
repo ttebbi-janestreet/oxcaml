@@ -306,7 +306,7 @@ module Cse_generic (Target : Cfg_cse_target_intf.S) = struct
     | Const_int _ | Const_float32 _ | Const_float _ | Const_symbol _
     | Const_vec128 _ | Const_vec256 _ | Const_vec512 _ ->
       Op_pure
-    | Opaque | Pause -> assert false (* treated specially *)
+    | Opaque | Hint _ -> assert false (* treated specially *)
     | Stackoffset _ -> Op_other
     | Load { mutability; is_atomic; memory_chunk = _; addressing_mode = _ } ->
       (* #12173: disable CSE for atomic loads. *)
@@ -337,7 +337,7 @@ module Cse_generic (Target : Cfg_cse_target_intf.S) = struct
     | Const_int _ -> true
     | Move | Spill | Reload | Const_float32 _ | Const_float _ | Const_symbol _
     | Const_vec128 _ | Const_vec256 _ | Const_vec512 _ | Opaque | Stackoffset _
-    | Load _ | Store _ | Alloc _ | Poll | Pause | Intop _ | Int128op _
+    | Load _ | Store _ | Alloc _ | Poll | Hint _ | Intop _ | Int128op _
     | Intop_imm (_, _)
     | Intop_atomic _ | Floatop _ | Csel _ | Static_cast _ | Reinterpret_cast _
     | Specific _ | Name_for_debugger _ | Probe_is_enabled _ | Begin_region
@@ -362,10 +362,15 @@ module Cse_generic (Target : Cfg_cse_target_intf.S) = struct
     | Op Opaque ->
       (* Assume arbitrary side effects from Opaque *)
       empty_numbering
-    | Op Pause ->
-      (* We don't want to reorder loads across Pause, since it's used to spin on
-         memory locations. *)
+    | Op (Hint Cmm.Pause) ->
+      (* We don't want to reorder loads across [pause], since it's used to spin
+         on memory locations. *)
       kill_loads n
+    | Op (Hint Cmm.Hot_path) ->
+      (* The hot-path marker has no memory semantics; leave numbering untouched.
+         It is never a CSE candidate (no result) and is preserved by
+         selection. *)
+      n
     | Op (Alloc _) | Op Poll ->
       (* For allocations, we must avoid extending the live range of a
          pseudoregister across the allocation if this pseudoreg is a derived

@@ -1504,3 +1504,7 @@ module Builtins = struct
     = "" "caml_bigstring_compare_and_swap_int64_unboxed"
     [@@noalloc] [@@builtin]
 end
+
+let[@inline never] not_inlinable () = ()
+
+external hot_path_to_here : unit -> unit = "%hot_path_to_here" [@@noalloc]

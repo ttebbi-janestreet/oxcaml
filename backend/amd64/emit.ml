@@ -2259,7 +2259,8 @@ let emit_instr ~first ~last ~fallthrough i =
          }
          :: !call_gc_sites;
     D.define_label lbl_after_poll
-  | Lop Pause -> I.pause ()
+  | Lop (Hint Cmm.Pause) -> I.pause ()
+  | Lop (Hint Cmm.Hot_path) -> () (* hot-path marker: emits no code *)
   | Lop (Intop (Icomp cmp)) ->
     if
       Reg.is_reg i.res.(0)

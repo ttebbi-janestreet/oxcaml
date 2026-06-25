@@ -474,6 +474,8 @@ let compile_cfg ppf_dump ~funcnames fd_cmm cfg_with_layout =
   ++ cfg_with_layout_profile ~accumulate:true "save_cfg" save_cfg
   ++ cfg_with_layout_profile ~accumulate:true "cfg_reorder_blocks"
        (reorder_blocks_random ppf_dump)
+  ++ cfg_with_layout_profile ~accumulate:true "cfg_hot_path"
+       Cfg_hot_path.reorder
   ++ Profile.record ~accumulate:true "cfg_invariants" (cfg_invariants ppf_dump)
   ++ Profile.record ~accumulate:true "cfg_available_regs"
        (available_regs

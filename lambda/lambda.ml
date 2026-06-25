@@ -416,6 +416,8 @@ type primitive =
   (* Poll for runtime actions *)
   | Ppoll
   | Pcpu_relax
+  (* OxCaml hot-path marker (runtime no-op) *)
+  | Phot_path
   | Pget_idx of layout * Asttypes.mutable_flag
   | Pset_idx of layout * modify_mode
   | Pget_ptr of layout * Asttypes.mutable_flag
@@ -2566,6 +2568,7 @@ let primitive_may_allocate : primitive -> locality_mode option = function
   | Ppoll ->
     Some alloc_heap
   | Pcpu_relax -> if Config.poll_insertion then None else Some alloc_heap
+  | Phot_path -> None
   | Patomic_load_field _
   | Patomic_set_field _
   | Patomic_exchange_field _
@@ -2767,7 +2770,7 @@ let primitive_can_raise prim =
   | Pwith_stack | Pwith_stack_bind | Pwith_stack_preemptible
   | Pwith_stack_bind_preemptible | Pperform | Presume
   | Preperform -> true (* XXX! *)
-  | Pdls_get | Ptls_get | Pdomain_index | Ppoll | Pcpu_relax
+  | Pdls_get | Ptls_get | Pdomain_index | Ppoll | Pcpu_relax | Phot_path
   | Preinterpret_tagged_int63_as_unboxed_int64
   | Preinterpret_unboxed_int64_as_tagged_int63
   | Preinterpret_boxed_vector_as_tuple _
@@ -3204,6 +3207,7 @@ let primitive_result_layout (p : primitive) =
   | Patomic_lxor_field
   | Ppoll -> layout_unit
   | Pcpu_relax -> layout_unit
+  | Phot_path -> layout_unit
   | Preinterpret_tagged_int63_as_unboxed_int64 -> layout_unboxed_int64
   | Preinterpret_unboxed_int64_as_tagged_int63 -> layout_int
   | Preinterpret_boxed_vector_as_tuple v -> layout_tupled_vector v

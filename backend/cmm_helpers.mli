@@ -1569,6 +1569,9 @@ val cpu_relax : dbg:Debuginfo.t -> expression
 
 val poll : dbg:Debuginfo.t -> expression
 
+(** OxCaml hot-path marker (runtime no-op). *)
+val hot_path : dbg:Debuginfo.t -> expression
+
 (** This module defines the various kinds of scalars usable in Cmm. It also
     provides ways to generate expressions to cast between them. *)
 module Scalar_type : sig

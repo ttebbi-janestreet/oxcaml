@@ -126,7 +126,8 @@ let operation ?(print_reg = Printreg.reg) (op : Operation.t) arg ppf res =
   | Tls_get -> fprintf ppf "tls_get"
   | Domain_index -> fprintf ppf "domain_index"
   | Poll -> fprintf ppf "poll call"
-  | Pause -> fprintf ppf "pause"
+  | Hint Cmm.Pause -> fprintf ppf "pause"
+  | Hint Cmm.Hot_path -> fprintf ppf "hot_path"
   | Probe_is_enabled { name; enabled_at_init } ->
     fprintf ppf "probe_is_enabled \"%s\"%s" name
       (match enabled_at_init with

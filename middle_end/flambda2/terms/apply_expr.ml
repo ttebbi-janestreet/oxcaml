@@ -82,7 +82,11 @@ type t =
     inlining_state : Inlining_state.t;
     probe : Probe.t;
     position : Position.t;
-    relative_history : Inlining_history.Relative.t
+    relative_history : Inlining_history.Relative.t;
+    hot : bool
+        (* OxCaml hot-path inlining: [true] if this call site is on a path that
+           can reach a [hot_path_to_here ()] marker, in which case it gets a
+           larger inlining budget. See [Call_site_inlining_decision]. *)
   }
 
 let [@ocamlformat "disable"] print_inlining_paths ppf relative_history =
@@ -93,7 +97,7 @@ let [@ocamlformat "disable"] print_inlining_paths ppf relative_history =
 let [@ocamlformat "disable"] print_normal ppf
     { callee; continuation; exn_continuation; args; args_arity;
       return_arity; call_kind; alloc_mode; dbg; inlined; inlining_state; probe;
-      position; relative_history } =
+      position; relative_history; hot } =
   Format.fprintf ppf "@[<hov 1>(\
       @[<hov 1>(%a\u{3008}%a\u{3009}\u{300a}%a\u{300b}\
       (%a))@]@ \
@@ -107,6 +111,7 @@ let [@ocamlformat "disable"] print_normal ppf
       %a\
       @[<hov 1>(probe@ %a)@]@ \
       @[<hov 1>(position@ %a)@]\
+      %t\
       )@]"
     (Misc.Stdlib.Option.print Simple.print) callee
     Result_continuation.print continuation
@@ -128,11 +133,12 @@ let [@ocamlformat "disable"] print_normal ppf
        | Position.Normal -> Format.pp_print_string ppf "Normal"
        | Position.Nontail -> Format.pp_print_string ppf "Nontail")
     position
+    (fun ppf -> if hot then Format.fprintf ppf "@ @[<hov 1>(hot)@]")
 
 let [@ocamlformat "disable"] print_effect ppf
     { callee = _; continuation; exn_continuation; args = _; args_arity = _;
       return_arity = _; call_kind; alloc_mode; dbg; inlined = _; inlining_state = _;
-      probe = _; position; relative_history = _ } =
+      probe = _; position; relative_history = _; hot = _ } =
   Format.fprintf ppf "@[<hov 1>(\
       @[<hov 1>%a@]@ \
       @[<hov 1>(alloc_mode %a)@]@ \
@@ -172,7 +178,8 @@ let invariant
        inlining_state = _;
        probe = _;
        position = _;
-       relative_history = _
+       relative_history = _;
+       hot = _
      } as t) =
   (match callee with
   | Some _ -> ()
@@ -213,8 +220,8 @@ let invariant
       "Length of argument and arity lists disagree in [Apply]:@ %a" print t
 
 let create ~callee ~continuation exn_continuation ~args ~args_arity
-    ~return_arity ~(call_kind : Call_kind.t) ~alloc_mode dbg ~inlined
-    ~inlining_state ~probe ~position ~relative_history =
+    ~return_arity ~(call_kind : Call_kind.t) ~alloc_mode ?(hot = false) dbg
+    ~inlined ~inlining_state ~probe ~position ~relative_history =
   let t =
     { callee;
       continuation;
@@ -229,7 +236,8 @@ let create ~callee ~continuation exn_continuation ~args ~args_arity
       inlining_state;
       probe;
       position;
-      relative_history
+      relative_history;
+      hot
     }
   in
   invariant t;
@@ -257,6 +265,10 @@ let relative_history t = t.relative_history
 
 let position t = t.position
 
+let hot t = t.hot
+
+let with_hot t hot = { t with hot }
+
 let free_names_without_exn_continuation
     { callee;
       continuation;
@@ -271,7 +283,8 @@ let free_names_without_exn_continuation
       inlining_state = _;
       probe = _;
       position = _;
-      relative_history = _
+      relative_history = _;
+      hot = _
     } =
   Name_occurrences.union_list
     [ (match callee with
@@ -296,7 +309,8 @@ let free_names_except_callee
       inlining_state = _;
       probe = _;
       position = _;
-      relative_history = _
+      relative_history = _;
+      hot = _
     } =
   Name_occurrences.union_list
     [ Result_continuation.free_names continuation;
@@ -326,7 +340,8 @@ let apply_renaming
        inlining_state;
        probe;
        position;
-       relative_history
+       relative_history;
+       hot
      } as t) renaming =
   let continuation' =
     Result_continuation.apply_renaming continuation renaming
@@ -366,7 +381,8 @@ let apply_renaming
       inlining_state;
       probe;
       position;
-      relative_history
+      relative_history;
+      hot
     }
 
 let ids_for_export
@@ -383,7 +399,8 @@ let ids_for_export
       inlining_state = _;
       probe = _;
       position = _;
-      relative_history = _
+      relative_history = _;
+      hot = _
     } =
   let callee_ids =
     match callee with

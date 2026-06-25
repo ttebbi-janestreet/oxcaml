@@ -297,7 +297,8 @@ let compute_static_size lam =
     | Patomic_land_field
     | Patomic_lor_field
     | Patomic_lxor_field
-    | Pcpu_relax ->
+    | Pcpu_relax
+    | Phot_path ->
         (* Unit-returning primitives. Most of these are only generated from
            external declarations and not special-cased by [Value_rec_check],
            but it doesn't hurt to be consistent. *)
