@@ -750,6 +750,31 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
       | [] | _ :: _ ->
         Misc.fatal_errorf "Wrong number of arguments for Lraise: %a"
           Printlambda.primitive prim)
+    | Phot_path _ ->
+      (* Hot-path marker: its inlining-budget factor must be a compile-time
+         constant. Extract it here from the (literal) argument and bake it into
+         the primitive, dropping the argument; downstream this becomes the
+         [Hot_path] flambda primitive carrying the factor. *)
+      let factor =
+        match args with
+        | [Lconst (Const_base (Const_float s))] -> float_of_string s
+        | _ ->
+          Location.raise_errorf
+            ~loc:(Debuginfo.Scoped_location.to_location loc)
+            "The argument to [hot_path_to_here] must be a float literal \
+             constant"
+      in
+      let id = Ident.create_local "hot_path" in
+      let id_duid = Lambda.debug_uid_none in
+      cps acc env ccenv
+        (L.Llet
+           ( Strict,
+             Lambda.layout_unit,
+             id,
+             id_duid,
+             L.Lprim (Phot_path factor, [], loc),
+             L.Lvar id ))
+        k k_exn
     | _ ->
       (* The code for translating primitives needs a let binding, so we
          introduce such a binding explicitly. *)

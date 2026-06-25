@@ -195,7 +195,7 @@ module Acc = struct
       extra : Continuation_extra_params_and_args.t Continuation.Map.t;
       lifted_constants : Lifted_constant_state.t;
       dummy_toplevel_cont : Continuation.t;
-      hot_marker_conts : Continuation.Set.t
+      hot_marker_conts : float Continuation.Map.t
     }
 
   let print_stack ppf stack =
@@ -349,7 +349,7 @@ module Flow_result = struct
     { data_flow_result : Data_flow_result.t;
       aliases_result : Alias_result.t;
       mutable_unboxing_result : Mutable_unboxing_result.t;
-      reaches_hot_marker : Continuation.Set.t
+      reaches_hot_marker : float Continuation.Map.t
     }
 
   let [@ocamlformat "disable"] print ppf

@@ -3149,7 +3149,7 @@ let convert_lprim ~(machine_width : Target_system.Machine_width.t) ~big_endian
   | Patomic_lxor_field, [[atomic]; [field]; [i]] ->
     [Ternary (Atomic_field_int_arith Xor, atomic, field, i)]
   | Pcpu_relax, _ -> [Nullary Cpu_relax]
-  | Phot_path, _ -> [Nullary Hot_path]
+  | Phot_path factor, _ -> [Nullary (Hot_path factor)]
   | Pdls_get, _ -> [Nullary Dls_get]
   | Ptls_get, _ -> [Nullary Tls_get]
   | Pdomain_index, _ -> [Nullary Domain_index]

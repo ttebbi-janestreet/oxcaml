@@ -110,7 +110,7 @@ let nullary_exn ~env ~res (f : Flambda_primitive.nullary_primitive) =
     (* See [parse_bytecode.ml] in jsoo - treated as a noop *)
     no_op ~env ~res
   | Cpu_relax -> use_prim' (Extern "caml_ml_domain_cpu_relax")
-  | Hot_path ->
+  | Hot_path _ ->
     (* Runtime no-op marker. *)
     no_op ~env ~res
 

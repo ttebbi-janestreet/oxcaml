@@ -1131,7 +1131,7 @@ let lookup_primitive loc ~poly_mode ~poly_sort pos p =
     | "%atomic_lxor_field" -> Atomic(Lxor, Field, Immediate)
     | "%atomic_lxor_loc" -> Atomic(Lxor, Loc, Immediate)
     | "%cpu_relax" -> Primitive (Pcpu_relax, 1)
-    | "%hot_path_to_here" -> Primitive (Phot_path, 1)
+    | "%hot_path_to_here" -> Primitive (Phot_path 0., 1)
     | "%with_stack" ->
       if runtime5 then Primitive (Pwith_stack, 5) else Unsupported Pwith_stack
     | "%with_stack_bind" ->
@@ -2567,7 +2567,7 @@ let lambda_primitive_needs_event_after = function
   | Patomic_add_field | Patomic_sub_field
   | Patomic_land_field | Patomic_lor_field | Patomic_lxor_field
   | Patomic_load_field _ | Patomic_set_field _
-  | Pcpu_relax | Phot_path | Pctconst _ | Pint_as_pointer _ | Popaque _
+  | Pcpu_relax | Phot_path _ | Pctconst _ | Pint_as_pointer _ | Popaque _
   | Pdls_get
   | Ptls_get
   | Pdomain_index

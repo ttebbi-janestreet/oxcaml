@@ -381,9 +381,11 @@ type nullary_primitive =
   | Cpu_relax
       (** Arch-specific pause. If poll insertion is disabled, also acts as a
           polling point. *)
-  | Hot_path
+  | Hot_path of float
       (** OxCaml hot-path marker (runtime no-op). Signals that all code able to
-          reach this point is hot; affects inlining budget and code layout. *)
+          reach this point is hot; affects code layout, and multiplies the
+          inlining budget of reaching call sites by the given (compile-time
+          constant) factor. *)
 
 (** Untagged binary integer arithmetic operations.
 

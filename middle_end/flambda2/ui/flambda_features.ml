@@ -206,8 +206,6 @@ module Inlining = struct
 
   let depth_scaling_factor = 10 (* See [Downwards_env.enter_inlined_apply] *)
 
-  let hot_path_inline_factor () = !I.hot_path_inline_factor
-
   let default_for_opt_level (opt_level : Oxcaml_flags.opt_level) =
     match opt_level with
     | Oclassic -> I.oclassic_arguments

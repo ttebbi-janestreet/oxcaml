@@ -111,8 +111,8 @@ val continuation_param_aliases : t -> Flow_types.Alias_result.t
 val mutable_unboxing_result : t -> Flow_types.Mutable_unboxing_result.t
 
 (* Continuations from which control can reach a [Hot_path] marker (hot-path
-   inlining). *)
-val reaches_hot_marker : t -> Continuation.Set.t
+   inlining), mapped to the largest reachable factor. *)
+val reaches_hot_marker : t -> float Continuation.Map.t
 
 val set_resimplify : t -> t
 

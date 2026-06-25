@@ -134,10 +134,6 @@ module Inlining : sig
 
   val depth_scaling_factor : int
 
-  (** Multiplier applied to the inlining threshold at hot call sites (those that
-      can reach a [hot_path_to_here ()] marker). *)
-  val hot_path_inline_factor : unit -> float
-
   (** [max_depth] returns the user's value multipled by [depth_scaling_factor].
   *)
   val max_depth : round_or_default -> int

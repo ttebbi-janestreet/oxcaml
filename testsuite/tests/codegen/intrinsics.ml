@@ -1507,4 +1507,4 @@ end
 
 let[@inline never] not_inlinable () = ()
 
-external hot_path_to_here : unit -> unit = "%hot_path_to_here" [@@noalloc]
+external hot_path_to_here : float -> unit = "%hot_path_to_here" [@@noalloc]

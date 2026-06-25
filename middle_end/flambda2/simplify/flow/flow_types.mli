@@ -115,10 +115,10 @@ module Acc : sig
       extra : Continuation_extra_params_and_args.t Continuation.Map.t;
       lifted_constants : Lifted_constant_state.t;
       dummy_toplevel_cont : Continuation.t;
-      hot_marker_conts : Continuation.Set.t
-          (** Continuations whose handler binds a [hot_path_to_here ()] marker.
-              These are the seeds for the hot-path reachability computed by the
-              flow analysis. *)
+      hot_marker_conts : float Continuation.Map.t
+          (** Continuations whose handler binds a [hot_path_to_here factor]
+              marker, mapped to the (largest) such factor. These are the seeds
+              for the hot-path reachability computed by the flow analysis. *)
     }
 
   val print : Format.formatter -> t -> unit
@@ -205,10 +205,11 @@ module Flow_result : sig
     { data_flow_result : Data_flow_result.t;
       aliases_result : Alias_result.t;
       mutable_unboxing_result : Mutable_unboxing_result.t;
-      reaches_hot_marker : Continuation.Set.t
+      reaches_hot_marker : float Continuation.Map.t
           (** Continuations from which control flow can reach a [Hot_path]
-              marker. An [Apply] whose return continuation is in this set is on
-              a hot path (everything leading to the marker is hot). *)
+              marker, mapped to the largest reachable factor. An [Apply] whose
+              return continuation is in this map is on a hot path (everything
+              leading to the marker is hot). *)
     }
 
   val print : Format.formatter -> t -> unit

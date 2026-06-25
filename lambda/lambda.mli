@@ -430,7 +430,7 @@ type primitive =
   | Pcpu_relax
   (* OxCaml hot-path marker: a runtime no-op signalling that all code able to
      reach this point is hot. Drives inlining budget and code layout. *)
-  | Phot_path
+  | Phot_path of float
   | Pget_idx of layout * Asttypes.mutable_flag
   | Pset_idx of layout * modify_mode
   | Pget_ptr of layout * Asttypes.mutable_flag

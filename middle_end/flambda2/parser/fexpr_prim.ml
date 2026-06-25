@@ -674,7 +674,8 @@ let cpu_relax =
   D.(nullary "%cpu_relax" ~params:param0 (fun _env () -> P.Cpu_relax))
 
 let hot_path =
-  D.(nullary "%hot_path_to_here" ~params:param0 (fun _env () -> P.Hot_path))
+  (* The fexpr textual format does not carry the hot-path factor; default it. *)
+  D.(nullary "%hot_path_to_here" ~params:param0 (fun _env () -> P.Hot_path 1.0))
 
 (* Unaries *)
 let block_load =
@@ -1247,7 +1248,7 @@ module OfFlambda = struct
     | Tls_get -> tls_get env ()
     | Poll -> poll env ()
     | Cpu_relax -> cpu_relax env ()
-    | Hot_path -> hot_path env ()
+    | Hot_path _ -> hot_path env ()
 
   let unop env (op : P.unary_primitive) =
     match op with

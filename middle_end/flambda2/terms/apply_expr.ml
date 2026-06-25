@@ -83,10 +83,11 @@ type t =
     probe : Probe.t;
     position : Position.t;
     relative_history : Inlining_history.Relative.t;
-    hot : bool
-        (* OxCaml hot-path inlining: [true] if this call site is on a path that
-           can reach a [hot_path_to_here ()] marker, in which case it gets a
-           larger inlining budget. See [Call_site_inlining_decision]. *)
+    hot_inline_factor : float option
+        (* OxCaml hot-path inlining: [Some factor] if this call site is on a
+           path that can reach a [hot_path_to_here factor] marker, in which case
+           its inlining budget is multiplied by [factor]. See
+           [Call_site_inlining_decision]. *)
   }
 
 let [@ocamlformat "disable"] print_inlining_paths ppf relative_history =
@@ -97,7 +98,7 @@ let [@ocamlformat "disable"] print_inlining_paths ppf relative_history =
 let [@ocamlformat "disable"] print_normal ppf
     { callee; continuation; exn_continuation; args; args_arity;
       return_arity; call_kind; alloc_mode; dbg; inlined; inlining_state; probe;
-      position; relative_history; hot } =
+      position; relative_history; hot_inline_factor } =
   Format.fprintf ppf "@[<hov 1>(\
       @[<hov 1>(%a\u{3008}%a\u{3009}\u{300a}%a\u{300b}\
       (%a))@]@ \
@@ -133,12 +134,14 @@ let [@ocamlformat "disable"] print_normal ppf
        | Position.Normal -> Format.pp_print_string ppf "Normal"
        | Position.Nontail -> Format.pp_print_string ppf "Nontail")
     position
-    (fun ppf -> if hot then Format.fprintf ppf "@ @[<hov 1>(hot)@]")
+    (fun ppf -> match hot_inline_factor with
+       | Some factor -> Format.fprintf ppf "@ @[<hov 1>(hot %g)@]" factor
+       | None -> ())
 
 let [@ocamlformat "disable"] print_effect ppf
     { callee = _; continuation; exn_continuation; args = _; args_arity = _;
       return_arity = _; call_kind; alloc_mode; dbg; inlined = _; inlining_state = _;
-      probe = _; position; relative_history = _; hot = _ } =
+      probe = _; position; relative_history = _; hot_inline_factor = _ } =
   Format.fprintf ppf "@[<hov 1>(\
       @[<hov 1>%a@]@ \
       @[<hov 1>(alloc_mode %a)@]@ \
@@ -179,7 +182,7 @@ let invariant
        probe = _;
        position = _;
        relative_history = _;
-       hot = _
+       hot_inline_factor = _
      } as t) =
   (match callee with
   | Some _ -> ()
@@ -220,8 +223,9 @@ let invariant
       "Length of argument and arity lists disagree in [Apply]:@ %a" print t
 
 let create ~callee ~continuation exn_continuation ~args ~args_arity
-    ~return_arity ~(call_kind : Call_kind.t) ~alloc_mode ?(hot = false) dbg
-    ~inlined ~inlining_state ~probe ~position ~relative_history =
+    ~return_arity ~(call_kind : Call_kind.t) ~alloc_mode
+    ?(hot_inline_factor = None) dbg ~inlined ~inlining_state ~probe ~position
+    ~relative_history =
   let t =
     { callee;
       continuation;
@@ -237,7 +241,7 @@ let create ~callee ~continuation exn_continuation ~args ~args_arity
       probe;
       position;
       relative_history;
-      hot
+      hot_inline_factor
     }
   in
   invariant t;
@@ -265,9 +269,9 @@ let relative_history t = t.relative_history
 
 let position t = t.position
 
-let hot t = t.hot
+let hot_inline_factor t = t.hot_inline_factor
 
-let with_hot t hot = { t with hot }
+let with_hot_inline_factor t hot_inline_factor = { t with hot_inline_factor }
 
 let free_names_without_exn_continuation
     { callee;
@@ -284,7 +288,7 @@ let free_names_without_exn_continuation
       probe = _;
       position = _;
       relative_history = _;
-      hot = _
+      hot_inline_factor = _
     } =
   Name_occurrences.union_list
     [ (match callee with
@@ -310,7 +314,7 @@ let free_names_except_callee
       probe = _;
       position = _;
       relative_history = _;
-      hot = _
+      hot_inline_factor = _
     } =
   Name_occurrences.union_list
     [ Result_continuation.free_names continuation;
@@ -341,7 +345,7 @@ let apply_renaming
        probe;
        position;
        relative_history;
-       hot
+       hot_inline_factor
      } as t) renaming =
   let continuation' =
     Result_continuation.apply_renaming continuation renaming
@@ -382,7 +386,7 @@ let apply_renaming
       probe;
       position;
       relative_history;
-      hot
+      hot_inline_factor
     }
 
 let ids_for_export
@@ -400,7 +404,7 @@ let ids_for_export
       probe = _;
       position = _;
       relative_history = _;
-      hot = _
+      hot_inline_factor = _
     } =
   let callee_ids =
     match callee with

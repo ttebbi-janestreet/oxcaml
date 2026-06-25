@@ -1,0 +1,4 @@
+File "hot_path_error.ml", line 14, characters 40-63:
+14 | let mark_dynamically (factor : float) = hot_path_to_here factor
+                                             ^^^^^^^^^^^^^^^^^^^^^^^
+Error: The argument to [hot_path_to_here] must be a float literal constant

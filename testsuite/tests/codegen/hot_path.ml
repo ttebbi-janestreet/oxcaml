@@ -19,7 +19,7 @@ open Intrinsics
 
 (* The marker is a runtime no-op: it generates no machine code. *)
 let no_code x =
-  hot_path_to_here ();
+  hot_path_to_here 10.;
   x + 1
 
 [%%expect_asm X86_64{|
@@ -53,7 +53,7 @@ let dispatch_unmarked x =
 
 let dispatch_hot_path b x =
   if x > 5 then cold ()
-  else if x < 10 then (let _ : int = helper5 x in hot_path_to_here ())
+  else if x < 10 then (let _ : int = helper5 x in hot_path_to_here 10.)
   else cold ()
 
 end

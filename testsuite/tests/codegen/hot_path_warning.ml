@@ -36,7 +36,7 @@ let plain_cold c =
 (* A call before the marker is hot; a call after it is cold. *)
 let seq_before_after c =
   not_inlinable () (* HOT *);
-  hot_path_to_here ();
+  hot_path_to_here 10.;
   ignore (Sys.opaque_identity c);
   not_inlinable () (* cold *)
 
@@ -47,7 +47,7 @@ let let_rhs_before_marker c =
     not_inlinable () (* HOT *);
     Sys.opaque_identity c
   in
-  hot_path_to_here ();
+  hot_path_to_here 10.;
   x
 
 (* Contrast: same shape, no marker, so the RHS call is cold. *)
@@ -66,7 +66,7 @@ let before_if_cont_hot c =
   (if Sys.opaque_identity c
    then not_inlinable () (* HOT *)
    else not_inlinable () (* HOT *););
-  hot_path_to_here ()
+  hot_path_to_here 10.
 
 (* Marker in the [then] branch: the [then] call (before it) is hot, the [else]
    call is cold -- hotness does not leak between sibling branches. *)
@@ -74,7 +74,7 @@ let if_branch_marker c =
   if Sys.opaque_identity c
   then (
     not_inlinable () (* HOT *);
-    hot_path_to_here ())
+    hot_path_to_here 10.)
   else not_inlinable () (* cold *)
 
 (* Same for [match] arms. *)
@@ -82,7 +82,7 @@ let match_arm_marker n =
   match Sys.opaque_identity n with
   | 0 ->
     not_inlinable () (* HOT *);
-    hot_path_to_here ()
+    hot_path_to_here 10.
   | 1 -> not_inlinable () (* cold *)
   | _ -> ()
 
@@ -95,12 +95,12 @@ let while_body_hot n =
     not_inlinable () (* HOT *);
     incr i
    done;
-   hot_path_to_here ()
+   hot_path_to_here 10.
 
 let for_body_hot n =
   for _i = 0 to Sys.opaque_identity n do
     not_inlinable () (* HOT *);
-    hot_path_to_here ()
+    hot_path_to_here 10.
   done
 
 (* A call after the marker in a loop body is hot: the loop back-edge means a
@@ -109,7 +109,7 @@ let for_body_hot n =
 let while_body_after_marker n =
   let i = ref 0 in
   while Sys.opaque_identity !i < n do
-    hot_path_to_here ();
+    hot_path_to_here 10.;
     not_inlinable () (* HOT (reaches the marker on the next iteration) *);
     incr i
   done
@@ -121,7 +121,7 @@ let try_body_marker c =
   (try
      not_inlinable () (* HOT *)
    with _ -> ());
-   hot_path_to_here ()
+   hot_path_to_here 10.
 
 (* Marker in the handler: the handler call (before it) is hot. The body call is
    hot too -- raising from the body transfers control to the handler, so the
@@ -131,7 +131,7 @@ let try_handler_hot c =
   try not_inlinable () (* HOT (can raise into the hot handler) *)
   with _ ->
     not_inlinable () (* HOT *);
-    hot_path_to_here ()
+    hot_path_to_here 10.
 
 (* ===== into inlined functions: the cascade ===== *)
 
@@ -140,7 +140,7 @@ let try_handler_hot c =
 let cascade_hot () =
   let[@inline always] w () = not_inlinable () (* HOT via cascade *) in
   w ();
-  hot_path_to_here ()
+  hot_path_to_here 10.
 
 (* Contrast: the same wrapper inlined in a cold context stays cold. *)
 let cascade_cold () =
@@ -153,7 +153,7 @@ let nested_cascade_hot () =
   let[@inline always] mid () = inner () in
   let[@inline always] outer () = mid () in
   outer ();
-  hot_path_to_here ()
+  hot_path_to_here 10.
 
 (* The cascade marks the whole inlined body hot, including its branches. *)
 let cascade_branch c =
@@ -161,7 +161,7 @@ let cascade_branch c =
     if Sys.opaque_identity c then not_inlinable () (* HOT via cascade *) else ()
   in
   w ();
-  hot_path_to_here ()
+  hot_path_to_here 10.
 
 (* ===== marker inside an inlined function (the let*-style case) ===== *)
 
@@ -172,7 +172,7 @@ let cascade_branch c =
    continuation reaches it, and re-simplification (via the [resimplify] flag)
    gives the call the hot-path budget. *)
 let marker_in_inlined_callee () =
-  let[@inline always] mark () = hot_path_to_here () in
+  let[@inline always] mark () = hot_path_to_here 10. in
   not_inlinable () (* HOT (revealed after [mark] is inlined) *);
   mark ()
 
@@ -186,7 +186,7 @@ let let_star_bound_expr () =
   bind
     (not_inlinable () (* HOT: precedes the marker in the inlined continuation *);
      0)
-    (fun _x -> hot_path_to_here ())
+    (fun _x -> hot_path_to_here 10.)
 
 (* ===== tail recursion turned into a loop ===== *)
 
@@ -194,7 +194,7 @@ let rec tail_loop_1 n =
   let rec loop i =
     if Sys.opaque_identity i > 0
     then begin
-      hot_path_to_here ();
+      hot_path_to_here 10.;
       not_inlinable () (* HOT *);
       loop (i - 1)
     end
@@ -213,4 +213,4 @@ let tail_loop_2 n =
     else not_inlinable () (* HOT *)
   in
   loop n;
-  hot_path_to_here ()
+  hot_path_to_here 10.

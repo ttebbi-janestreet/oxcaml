@@ -216,19 +216,23 @@ let rebuild_non_inlined_direct_full_application apply ~use_id ~exn_cont_use_id
      drive inlining in the next. *)
   let apply, uacc =
     let reaches_hot_marker = UA.reaches_hot_marker uacc in
-    let return_reaches_marker =
+    let factor_of k = Continuation.Map.find_opt k reaches_hot_marker in
+    let return_factor =
       match Apply.continuation apply with
-      | Apply.Result_continuation.Return k ->
-        Continuation.Set.mem k reaches_hot_marker
-      | Apply.Result_continuation.Never_returns -> false
+      | Apply.Result_continuation.Return k -> factor_of k
+      | Apply.Result_continuation.Never_returns -> None
     in
-    let exn_reaches_marker =
-      Continuation.Set.mem
-        (Exn_continuation.exn_handler (Apply.exn_continuation apply))
-        reaches_hot_marker
+    let exn_factor =
+      factor_of (Exn_continuation.exn_handler (Apply.exn_continuation apply))
     in
-    if (not (Apply.hot apply)) && (return_reaches_marker || exn_reaches_marker)
-    then begin
+    let factor =
+      match return_factor, exn_factor with
+      | None, None -> None
+      | (Some _ as f), None | None, (Some _ as f) -> f
+      | Some a, Some b -> Some (Float.max a b)
+    in
+    match factor, Apply.hot_inline_factor apply with
+    | Some factor, None ->
       (* The call has just transitioned cold -> hot. If the callee's code is
          unavailable it can never be inlined despite being hot, so warn -- here
          at the transition (which happens exactly once per call) rather than in
@@ -239,13 +243,12 @@ let rebuild_non_inlined_direct_full_application apply ~use_id ~exn_cont_use_id
         Location.prerr_warning
           (Debuginfo.to_location (Apply.dbg apply))
           (Warnings.Inlining_impossible
-             "this call is on a hot path (it can reach a [hot_path_to_here ()] \
+             "this call is on a hot path (it can reach a [hot_path_to_here] \
               marker) but the callee could not be inlined because its code is \
               unavailable; add [@inline available] to the callee's definition \
               to make it inlinable across compilation units");
-      Apply.with_hot apply true, UA.set_resimplify uacc
-    end
-    else apply, uacc
+      Apply.with_hot_inline_factor apply (Some factor), UA.set_resimplify uacc
+    | (Some _ | None), _ -> apply, uacc
   in
   let uacc, expr =
     EB.rewrite_fixed_arity_apply uacc ~use_id result_arity apply
@@ -291,8 +294,8 @@ let simplify_direct_full_application ~simplify_expr dacc apply function_type
           ~are_rebuilding_terms:(DA.are_rebuilding_terms dacc)
           ~apply decision;
       (* [Missing_code] means the callee's code is not available for inlining
-         (e.g. compiled in another unit without being exported for inlining).
-         A hot call to such a callee is warned about in
+         (e.g. compiled in another unit without being exported for inlining). A
+         hot call to such a callee is warned about in
          [rebuild_non_inlined_direct_full_application]. *)
       let callee_code_unavailable =
         match[@ocaml.warning "-4"] decision with
@@ -664,7 +667,8 @@ let simplify_direct_partial_application ~simplify_expr dacc apply
             Apply.create ~callee ~continuation:(Return return_continuation)
               exn_continuation ~args ~args_arity:param_arity
               ~return_arity:result_arity ~call_kind ~alloc_mode:my_alloc_mode
-              ~hot:(Apply.hot apply) dbg ~inlined:Default_inlined
+              ~hot_inline_factor:(Apply.hot_inline_factor apply)
+              dbg ~inlined:Default_inlined
               ~inlining_state:(Apply.inlining_state apply)
               ~position:Normal ~probe:None
               ~relative_history:Inlining_history.Relative.empty
@@ -1275,7 +1279,7 @@ let simplify_apply_shared dacc apply : _ simplify_apply_shared_result =
         ~args ~args_arity:(Apply.args_arity apply)
         ~return_arity:(Apply.return_arity apply)
         ~call_kind:(Apply.call_kind apply) ~alloc_mode:(Apply.alloc_mode apply)
-        ~hot:(Apply.hot apply)
+        ~hot_inline_factor:(Apply.hot_inline_factor apply)
         (DE.add_inlined_debuginfo (DA.denv dacc) (Apply.dbg apply))
         ~inlined:(Apply.inlined apply) ~inlining_state
         ~probe:(Apply.probe apply) ~position:(Apply.position apply)

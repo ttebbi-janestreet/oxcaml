@@ -836,8 +836,8 @@ let rec comp_expr (exp : Lambda.lambda) : Blambda.blambda =
     | Pdomain_index -> unary (Ccall "caml_ml_domain_index")
     | Ppoll -> unary (Ccall "caml_process_pending_actions_with_root")
     | Pcpu_relax -> unary (Ccall "caml_ml_domain_cpu_relax")
-    | Phot_path -> (
-      (* Runtime no-op marker: evaluate the unit argument, return unit. *)
+    | Phot_path _ -> (
+      (* Runtime no-op marker: evaluate the factor argument, return unit. *)
       match args with
       | [arg] -> Sequence (comp_expr arg, unit)
       | [] | _ :: _ :: _ -> wrong_arity ~expected:1)

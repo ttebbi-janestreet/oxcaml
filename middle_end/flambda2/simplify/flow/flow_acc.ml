@@ -36,7 +36,7 @@ let empty () =
       extra = Continuation.Map.empty;
       lifted_constants = Lifted_constant_state.empty;
       dummy_toplevel_cont = wrong_dummy_toplevel_cont;
-      hot_marker_conts = Continuation.Set.empty
+      hot_marker_conts = Continuation.Map.empty
     }
   in
   res
@@ -104,15 +104,20 @@ let update_top_of_stack ~(t : t) ~f =
   | [] -> Misc.fatal_errorf "Empty stack of variable uses"
   | elt :: stack -> { t with stack = f elt :: stack }
 
-(* Record that the current continuation handler binds a [hot_path_to_here ()]
-   marker. This seeds the hot-path reachability in [Flow_analysis]. *)
-let record_hot_marker (t : t) =
+(* Record that the current continuation handler binds a [hot_path_to_here
+   factor] marker. This seeds the hot-path reachability in [Flow_analysis]. If a
+   handler binds several markers, the largest factor wins. *)
+let record_hot_marker (t : t) factor =
   match t.stack with
   | [] -> assert false
   | elt :: _ ->
     { t with
       hot_marker_conts =
-        Continuation.Set.add elt.continuation t.hot_marker_conts
+        Continuation.Map.update elt.continuation
+          (function
+            | None -> Some factor
+            | Some existing -> Some (Float.max existing factor))
+          t.hot_marker_conts
     }
 
 let record_defined_var var t =
@@ -370,7 +375,7 @@ let record_let_binding ~rewrite_id ~generate_phantom_lets ~let_bound
          [hot_path_to_here ()] marker. *)
       let t =
         match[@ocaml.warning "-4"] original_prim with
-        | Nullary Hot_path -> record_hot_marker t
+        | Nullary (Hot_path factor) -> record_hot_marker t factor
         | _ -> t
       in
       let bound_var = Bound_pattern.must_be_singleton let_bound in

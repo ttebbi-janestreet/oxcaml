@@ -55,7 +55,7 @@ val create :
   return_arity:[`Unarized] Flambda_arity.t ->
   call_kind:Call_kind.t ->
   alloc_mode:Alloc_mode.For_applications.t ->
-  ?hot:bool ->
+  ?hot_inline_factor:float option ->
   Debuginfo.t ->
   inlined:Inlined_attribute.t ->
   inlining_state:Inlining_state.t ->
@@ -105,11 +105,12 @@ val inlined : t -> Inlined_attribute.t
 (** Whether the call was marked [@nontail] *)
 val position : t -> Position.t
 
-(** [true] if this call site is on a hot path (can reach a [hot_path_to_here ()]
-    marker), in which case it gets a larger inlining budget. *)
-val hot : t -> bool
+(** [Some factor] if this call site is on a hot path (can reach a
+    [hot_path_to_here factor] marker), in which case its inlining budget is
+    multiplied by [factor]. *)
+val hot_inline_factor : t -> float option
 
-val with_hot : t -> bool -> t
+val with_hot_inline_factor : t -> float option -> t
 
 val erase_callee : t -> t
 

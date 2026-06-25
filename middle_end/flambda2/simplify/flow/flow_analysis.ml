@@ -147,14 +147,24 @@ let analyze ?(speculative = false) ?print_name ~machine_width
           | exception Not_found -> Continuation.Set.empty
           | callers -> callers
         in
+        (* Propagate each continuation's factor to its callers, keeping the
+           largest factor seen along the way. *)
         let add_callers reached =
-          Continuation.Set.fold
-            (fun k acc -> Continuation.Set.union acc (callers k))
+          Continuation.Map.fold
+            (fun k factor acc ->
+              Continuation.Set.fold
+                (fun caller acc ->
+                  Continuation.Map.update caller
+                    (function
+                      | None -> Some factor
+                      | Some existing -> Some (Float.max existing factor))
+                    acc)
+                (callers k) acc)
             reached reached
         in
         let rec saturate reached =
           let reached' = add_callers reached in
-          if Continuation.Set.equal reached reached'
+          if Continuation.Map.equal Float.equal reached reached'
           then reached
           else saturate reached'
         in
