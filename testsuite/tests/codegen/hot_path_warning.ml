@@ -5,7 +5,7 @@
  flags = "-O3 -w -a";
  ocamlopt.opt;
  module = "hot_path_warning.ml";
- flags = "-O3";
+ flags = "-O3 -flambda2-match-in-match";
  ocamlopt.opt;
  check-ocamlopt.opt-output;
 *)
@@ -180,13 +180,18 @@ let marker_in_inlined_callee () =
    continuation closure, which is inlined into [bind]; the bound expression then
    precedes the revealed marker and is hot. This is the motivating case for
    monadic-let code. *)
-let[@inline always] bind m k = k m
+let[@inline always] bind m k = match m with None -> None | Some m -> k m
 
-let let_star_bound_expr () =
-  bind
-    (not_inlinable () (* HOT: precedes the marker in the inlined continuation *);
-     0)
-    (fun _x -> hot_path_to_here 10.)
+let let_star_bound_expr x =
+  bind (
+    if x > 0
+    then (
+      not_inlinable (); (* HOT: triggers continuation *)
+      Some 5)
+    else (
+      not_inlinable (); (* cold: does not trigger continuation *)
+      None)
+  ) (fun _x -> hot_path_to_here 10.; None)
 
 (* ===== tail recursion turned into a loop ===== *)
 

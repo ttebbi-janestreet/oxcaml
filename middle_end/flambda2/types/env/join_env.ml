@@ -1868,12 +1868,19 @@ let cut_and_n_way_join ~n_way_join_type ~meet_expanded_head ~cut_after
     Index.fold_list
       (fun index typing_env
            (joined_envs, equations_to_join, symbol_projections_to_join) ->
-        let equations, symbol_projections =
-          cut_for_join typing_env ~cut_after
-        in
-        ( Index.Map.add index typing_env joined_envs,
-          Index.Map.add index (typing_env, equations) equations_to_join,
-          Index.Map.add index symbol_projections symbol_projections_to_join ))
+        if TE.is_bottom typing_env
+        then
+          (* A bottom use environment corresponds to an unreachable use, which
+             contributes nothing (bottom) to the join; we drop it entirely. See
+             the longer comment in [cut_and_n_way_join_with_analysis]. *)
+          joined_envs, equations_to_join, symbol_projections_to_join
+        else
+          let equations, symbol_projections =
+            cut_for_join typing_env ~cut_after
+          in
+          ( Index.Map.add index typing_env joined_envs,
+            Index.Map.add index (typing_env, equations) equations_to_join,
+            Index.Map.add index symbol_projections symbol_projections_to_join ))
       joined_envs
       (Index.Map.empty, Index.Map.empty, Index.Map.empty)
   in
@@ -1892,13 +1899,32 @@ let cut_and_n_way_join_with_analysis ~n_way_join_type ~meet_expanded_head
              joined_envs,
              equations_to_join,
              symbol_projections_to_join ) ->
-        let equations, symbol_projections =
-          cut_for_join typing_env ~cut_after
-        in
-        ( Index.Map.add index external_id external_ids,
-          Index.Map.add index typing_env joined_envs,
-          Index.Map.add index (typing_env, equations) equations_to_join,
-          Index.Map.add index symbol_projections symbol_projections_to_join ))
+        if TE.is_bottom typing_env
+        then
+          (* A bottom use environment corresponds to an unreachable use: it
+             contributes nothing (bottom) to the join, so we drop it entirely.
+             This matches the behaviour of the old binary join, which tolerates
+             bottom use environments, and avoids ever feeding a bottom
+             environment to [prepare_nested_join] (whose assertion would
+             otherwise fail).
+
+             Such bottom use environments are not necessarily the result of an
+             unreachable user-level branch: they are also created during join
+             setup, e.g. when a use's argument type contradicts a parameter's
+             subkind (see [Join_points.add_equations_on_params]) or an extra
+             parameter (see [Join_points.introduce_extra_params_in_use_env]). *)
+          ( external_ids,
+            joined_envs,
+            equations_to_join,
+            symbol_projections_to_join )
+        else
+          let equations, symbol_projections =
+            cut_for_join typing_env ~cut_after
+          in
+          ( Index.Map.add index external_id external_ids,
+            Index.Map.add index typing_env joined_envs,
+            Index.Map.add index (typing_env, equations) equations_to_join,
+            Index.Map.add index symbol_projections symbol_projections_to_join ))
       joined_envs
       (Index.Map.empty, Index.Map.empty, Index.Map.empty, Index.Map.empty)
   in
@@ -1947,30 +1973,39 @@ let prepare_nested_join ~meet_expanded_head ~joined_envs ~bindings extensions =
     List.fold_left
       (fun joined_envs_and_extensions (index, extension) ->
         let parent_env = Joined_envs.get_nth_joined_env joined_envs index in
-        (* The extension is not guaranteed to still be in canonical form, but we
-           need the equations to be in canonical form to known which variables
-           are actually touched by the extension, so we add it once then cut it.
-
-           Note: we need to cut it as a level, because the meets from
-           [add_env_extension_strict] could add perform nested joins which could
-           add new variables. *)
-        assert (not (TE.is_bottom parent_env));
-        let cut_after = TE.current_scope parent_env in
-        let typing_env = TE.increment_scope parent_env in
-        match
-          ME.add_env_extension_strict ~meet_expanded_head (ME.create typing_env)
-            extension
-        with
-        | Bottom ->
-          (* We can reach bottom here if the extension was created in a more
-             generic context, but is added in a context where it is no longer
-             reachable. *)
+        if TE.is_bottom parent_env
+        then
+          (* Backstop: bottom (unreachable) joined environments are normally
+             dropped before reaching here (see [cut_and_n_way_join]), so the
+             parent environment should not be bottom. If it ever is, it
+             contributes nothing (bottom) to the join and can be skipped, like
+             the [Bottom] case below. *)
           joined_envs_and_extensions
-        | Ok env ->
-          let level = ME.cut env ~cut_after in
-          Index.Map.add index
-            (ME.typing_env env, level)
-            joined_envs_and_extensions)
+        else
+          (* The extension is not guaranteed to still be in canonical form, but
+             we need the equations to be in canonical form to known which
+             variables are actually touched by the extension, so we add it once
+             then cut it.
+
+             Note: we need to cut it as a level, because the meets from
+             [add_env_extension_strict] could add perform nested joins which
+             could add new variables. *)
+          let cut_after = TE.current_scope parent_env in
+          let typing_env = TE.increment_scope parent_env in
+          match
+            ME.add_env_extension_strict ~meet_expanded_head
+              (ME.create typing_env) extension
+          with
+          | Bottom ->
+            (* We can reach bottom here if the extension was created in a more
+               generic context, but is added in a context where it is no longer
+               reachable. *)
+            joined_envs_and_extensions
+          | Ok env ->
+            let level = ME.cut env ~cut_after in
+            Index.Map.add index
+              (ME.typing_env env, level)
+              joined_envs_and_extensions)
       Index.Map.empty extensions
   in
   Index.Map.mapi
