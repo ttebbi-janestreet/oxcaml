@@ -18,7 +18,7 @@ open! Stdlib
 
 [@@@ocaml.flambda_o3]
 
-type ('a : value_or_null, 'e : value_or_null) t = ('a, 'e) result = Ok of 'a | Error of 'e
+type ('a : value_or_null, 'e : value_or_null) t = ('a, 'e) result = Ok of 'a | Error of 'e [@cold]
 
 let ok v = Ok v
 let error e = Error e

@@ -257,7 +257,7 @@ external decr : (int ref[@local_opt]) -> unit @@ portable = "%decr"
 
 (* Result type *)
 
-type ('a : value_or_null, 'b : value_or_null) result = Ok of 'a | Error of 'b
+type ('a : value_or_null, 'b : value_or_null) result = Ok of 'a | Error of 'b [@cold]
 
 (* String conversion functions *)
 

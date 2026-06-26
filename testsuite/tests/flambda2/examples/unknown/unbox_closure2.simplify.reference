@@ -21,7 +21,7 @@ let code inline(always) loopify(never) size(11) newer_version_of(bar2_1)
   let int_mul_1 = %int_barith.mul (int_mul, y) in
   cont k (int_mul_1)
 in
-let code loopify(never) size(64) newer_version_of(foobar_0)
+let code loopify(never) size(67) newer_version_of(foobar_0)
       foobar_0_1 (b : imm tagged, x : imm tagged, z : imm tagged)
         my_closure _region _ghost_region my_depth
         -> k * k1
@@ -32,15 +32,19 @@ let code loopify(never) size(64) newer_version_of(foobar_0)
      | 1 -> k4)
     where k4 =
       let bar1 = closure bar1_2_1 @bar1 with { x = x } in
-      let Pmakeblock = %block.[`0`] (bar1) in
-      cont k2 (Pmakeblock)
+      cont k2 (0i, 0, bar1)
     where k3 =
       let bar2 = closure bar2_1_1 @bar2 with { x_1 = x; z = z } in
-      let Pmakeblock = %block.[`1`] (bar2) in
-      cont k2 (Pmakeblock)
-    where k2 (f : [ 0 of val |1 of val ]) =
-      let Pfield = %block_load.[`0`] (f) in
-      apply Pfield (x) -> k * k1
+      cont k2 (1i, bar2, 0)
+    where k2 (tag : imm, unboxed_field_1_0, unboxed_field_0_0) =
+      (switch tag
+         | 0 -> k2
+         | 1 -> k3
+         where k3 =
+           let Pcold = %cold () in
+           apply unboxed_field_1_0 (x) -> k * k1
+         where k2 =
+           apply unboxed_field_0_0 (x) -> k * k1)
 in
 let $camlUnbox_closure2__foobar_3 = closure foobar_0_1 @foobar in
 let $camlUnbox_closure2 = Block 0 ($camlUnbox_closure2__foobar_3) in

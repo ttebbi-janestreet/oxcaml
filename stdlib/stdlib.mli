@@ -1227,7 +1227,7 @@ external decr : (int ref[@local_opt]) -> unit = "%decr"
 (** {1 Result type} *)
 
 (** @since 4.03 *)
-type ('a : value_or_null, 'b : value_or_null) result = Ok of 'a | Error of 'b
+type ('a : value_or_null, 'b : value_or_null) result = Ok of 'a | Error of 'b [@cold]
 
 (** {1 Operations on format strings} *)
 

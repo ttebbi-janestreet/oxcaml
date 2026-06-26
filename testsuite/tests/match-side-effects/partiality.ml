@@ -537,21 +537,24 @@ let check_results r1 r2 =
                  (switch* r/2
                   case tag 0: (exit 50 r/2)
                   case tag 1:
-                   (catch
-                     (if (%int_greaterequal (field_imm 0 r/2) 66)
-                       (let (*match*/17 =a? (field_imm 1 *match*/16))
-                         (switch* *match*/17
+                   (seq (cold)
+                     (catch
+                       (if (%int_greaterequal (field_imm 0 r/2) 66)
+                         (let (*match*/17 =a? (field_imm 1 *match*/16))
+                           (switch* *match*/17
+                            case tag 0: (exit 52)
+                            case tag 1:
+                             (seq (cold)
+                               (let (*match*/18 =a? (field_imm 0 *match*/17))
+                                 (if (isint *match*/18)
+                                   (if (%int_notequal *match*/18 66)
+                                     (exit 53) r/2)
+                                   (exit 53))))))
+                         (switch* (field_imm 1 *match*/16)
                           case tag 0: (exit 52)
-                          case tag 1:
-                           (let (*match*/18 =a? (field_imm 0 *match*/17))
-                             (if (isint *match*/18)
-                               (if (%int_notequal *match*/18 66) (exit 53)
-                                 r/2)
-                               (exit 53)))))
-                       (switch* (field_imm 1 *match*/16)
-                        case tag 0: (exit 52)
-                        case tag 1: (exit 51 r/2)))
-                    with (53) (exit 51 (field_imm 1 *match*/16))))
+                          case tag 1: (seq (cold) (exit 51 r/2))))
+                      with (53)
+                       (seq (cold) (exit 51 (field_imm 1 *match*/16))))))
                 with (52) (exit 50 (field_imm 1 *match*/16))))
             with (50 r/3[value<(consts ()) (non_consts ([1: ?] [0: ?]))>])
              r/3)
