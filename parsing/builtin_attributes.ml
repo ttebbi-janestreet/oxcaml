@@ -39,6 +39,14 @@ let register_zero_alloc_attribute attr =
     Attribute_table.replace unchecked_zero_alloc_attributes attr
      (Warnings.backup ())
 let warn_unchecked_zero_alloc_attribute () =
+  (* Temporarily disabled: do not emit warning 199 when a [@zero_alloc] function
+     was optimized away (e.g. fully inlined, possibly via match-in-match).
+     Checking that a function which no longer exists does not allocate is not
+     useful. The [register]/[mark] bookkeeping above is kept so this is easy to
+     re-enable. *)
+  ()
+
+let _warn_unchecked_zero_alloc_attribute () =
     (* When using -i, attributes will not have been translated, so we can't
      warn about missing ones. *)
   if !Clflags.print_types then ()
