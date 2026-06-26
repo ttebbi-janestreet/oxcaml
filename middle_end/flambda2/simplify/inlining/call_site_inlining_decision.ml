@@ -186,37 +186,6 @@ let inlining_does_decrease_code_size ~code_or_metadata cost_metrics =
   let inlined_code_size = Cost_metrics.size cost_metrics in
   not (Code_size.( <= ) original_code_size inlined_code_size)
 
-(* A [@cold] marker function whose body does nothing other than return to its
-   caller, e.g. [let cold () = ()]. Such a function is normally not inlined
-   because [@cold] implies [@inline never]. The programmer uses it purely to
-   mark the following code as cold (see [Downwards_env.cold]), not to call
-   anything; so rather than emit a call, [Simplify_apply_expr] rewrites the call
-   to a persistent [Cold] marker (see [Flambda_primitive.Cold]) followed by a
-   jump to the return continuation. *)
-let is_empty_cold_marker ~code_metadata code_or_metadata =
-  Code_metadata.cold code_metadata
-  &&
-  match Code_or_metadata.view code_or_metadata with
-  | Metadata_only _ -> false
-  | Code_present code ->
-    Function_params_and_body.pattern_match (Code.params_and_body code)
-      ~f:(fun
-          ~return_continuation
-          ~exn_continuation:_
-          _params
-          ~body
-          ~my_closure:_
-          ~is_my_closure_used:_
-          ~my_alloc_mode:_
-          ~my_depth:_
-          ~free_names_of_body:_
-        ->
-        match Expr.descr body with
-        | Apply_cont ac ->
-          Continuation.equal (Apply_cont.continuation ac) return_continuation
-          && Option.is_none (Apply_cont.trap_action ac)
-        | Let _ | Let_cont _ | Apply _ | Switch _ | Invalid _ -> false)
-
 let might_inline dacc ~apply ~code_or_metadata ~function_type ~simplify_expr
     ~return_arity : Call_site_inlining_decision_type.t =
   let denv = DA.denv dacc in

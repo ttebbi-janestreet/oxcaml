@@ -427,19 +427,18 @@ let add_cold_attribute expr loc attributes =
     if get_cold_attribute attributes then begin
       if attr.cold then Location.prerr_warning loc
             (Warnings.Duplicated_attribute "cold");
-      (* ppx_cold rewrites `[@cold]` to `[@inline never][@specialise never]
-         [@local never]` so we do the equivalent here. *)
-      begin match attr.inline with
-      | Always_inline
-      | Never_inline
-      | Available_inline
-      | Unroll _ ->
-        Location.prerr_warning
-          loc
-          (Warnings.Implied_attribute
-            { implying = "cold"; implied = "inline" });
-      | Default_inline -> ()
-      end;
+      (* [@cold] implies [@inline never][@specialise never][@local never] (as
+         ppx_cold does), EXCEPT that an explicit [@inline] annotation is honoured
+         and overrides the implied [@inline never], so that the function body can
+         remain accessible -- e.g. [let cold[@cold] [@inline always] () = ()],
+         whose empty body can then be inlined/removed even across compilation
+         units. *)
+      let inline =
+        match attr.inline with
+        | Always_inline | Never_inline | Available_inline | Unroll _ ->
+          attr.inline
+        | Default_inline -> Never_inline
+      in
       begin match attr.specialise with
       | Always_specialise
       | Never_specialise ->
@@ -459,7 +458,7 @@ let add_cold_attribute expr loc attributes =
       end;
       let attr =
         { attr with cold = true;
-          inline = Never_inline;
+          inline;
           specialise = Never_specialise;
           local = Never_local; }
       in

@@ -1508,3 +1508,5 @@ end
 let[@inline never] not_inlinable () = ()
 
 external hot_path_to_here : float -> unit = "%hot_path_to_here" [@@noalloc]
+
+let[@cold][@inline always] cold () = ()

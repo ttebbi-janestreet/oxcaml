@@ -28,10 +28,3 @@ val get_rec_info :
   Downwards_acc.t ->
   function_type:Flambda2_types.Function_type.t ->
   Rec_info_expr.t
-
-(** Whether the callee is an empty [@cold] marker function (e.g.
-    [let cold[@cold] () = ()]): its body does nothing but return to its caller.
-    [Simplify_apply_expr] rewrites a direct call to such a function into a
-    persistent [Cold] marker (see [Flambda_primitive.Cold]). *)
-val is_empty_cold_marker :
-  code_metadata:Code_metadata.t -> Code_or_metadata.t -> bool

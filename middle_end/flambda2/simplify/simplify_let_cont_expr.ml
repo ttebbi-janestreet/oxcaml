@@ -1440,18 +1440,6 @@ and simplify_single_recursive_handler ~simplify_expr cont_uses_env_so_far
     in
     handler_env, decisions, dacc
   in
-  (* Persisted forward coldness (see [Downwards_env.cold]): re-seed [DE.cold]
-     from the handler's stored [is_cold] so a handler found cold in an earlier
-     round stays cold even after the [@cold] call that caused it was inlined
-     away. *)
-  let handler_env =
-    if is_cold then DE.set_cold handler_env true else handler_env
-  in
-  (* The handler's persistent coldness is its ENTRY coldness (predecessors /
-     fork via [compute_handler_env], plus the persisted seed above). We read it
-     here, before the body is simplified, so it is not polluted by coldness of
-     nested or exception continuations inside the body. *)
-  let entered_cold = DE.cold handler_env in
   let dacc = DA.with_denv dacc handler_env in
   simplify_handler ~simplify_expr ~is_recursive:true ~is_exn_handler:false
     ~params ~invariant_params cont dacc handler
@@ -1468,7 +1456,7 @@ and simplify_single_recursive_handler ~simplify_expr cont_uses_env_so_far
           params;
           rebuild_handler;
           is_exn_handler = false;
-          is_cold = entered_cold;
+          is_cold;
           continuations_used;
           unbox_decisions;
           extra_params_and_args = EPA.empty
@@ -1617,22 +1605,6 @@ and simplify_handlers ~simplify_expr ~down_to_up ~denv_for_join ~rebuild_body
           (Continuation_uses.get_uses uses)
           ~arg_types_by_use_id:(Continuation_uses.get_arg_types_by_use_id uses)
       in
-      (* Persisted forward coldness (see [Downwards_env.cold]): re-seed
-         [DE.cold] from the handler's stored [is_cold] so a handler found cold
-         in an earlier round stays cold even after the [@cold] call that caused
-         it was inlined away. Done after [prepare_dacc_for_handlers] so it
-         covers both the join and single-inlinable-use cases of
-         [compute_handler_env]. *)
-      let dacc =
-        if is_cold
-        then DA.map_denv dacc ~f:(fun denv -> DE.set_cold denv true)
-        else dacc
-      in
-      (* The handler's persistent coldness is its ENTRY coldness (the AND-merge
-         of predecessors from [compute_handler_env], plus the persisted seed
-         above), read before the body so it is not polluted by coldness of
-         nested or exception continuations inside the body. *)
-      let entered_cold = DE.cold (DA.denv dacc) in
       simplify_handler ~simplify_expr ~is_recursive:false ~is_exn_handler
         ~params cont dacc handler ~invariant_params:Bound_parameters.empty
         (fun dacc rebuild_handler cont_uses_env_in_handler ->
@@ -1651,7 +1623,7 @@ and simplify_handlers ~simplify_expr ~down_to_up ~denv_for_join ~rebuild_body
               params;
               rebuild_handler;
               is_exn_handler;
-              is_cold = entered_cold;
+              is_cold;
               continuations_used;
               unbox_decisions;
               extra_params_and_args

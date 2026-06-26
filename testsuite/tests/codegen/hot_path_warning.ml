@@ -228,13 +228,13 @@ let tail_loop_2 n =
    cold, hence not warned about. *)
 
 (* A non-empty [@cold] function: [@cold] implies [@inline never], so the call is
-   not inlined and the code after it is cold. *)
+   not inlined; the code after it is cold. *)
 let[@cold] cold_fn () = ignore (Sys.opaque_identity 0)
 
-(* An empty [@cold] marker: although [@cold] implies [@inline never], the empty
-   body means the call is still inlined (i.e. removed) -- but it still marks the
-   following code as cold. *)
-let[@cold] mark_cold () = ()
+(* An empty [@cold] [@inline always] marker: it is inlined like any function,
+   and inlining a [@cold] function leaves a (code-free) cold marker -- so the
+   call generates no code but still marks the following code as cold. *)
+let[@cold] [@inline always] mark_cold () = ()
 
 (* Cold beats hot: the probe reaches a marker (so the backward analysis would
    mark it hot) but it follows a [@cold] call, so it is cold. *)
@@ -243,7 +243,7 @@ let cold_beats_hot () =
   not_inlinable () (* cold (beats hot) *);
   hot_path_to_here 10.
 
-(* The empty marker is removed, yet the following probe is still cold. *)
+(* The empty marker is inlined away, yet the following probe is still cold. *)
 let empty_marker_propagates () =
   mark_cold ();
   not_inlinable () (* cold (beats hot) *);
