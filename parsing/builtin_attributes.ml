@@ -247,6 +247,15 @@ let mark_warn_on_literal_pattern_used l =
     then mark_used a.attr_name)
     l
 
+let mark_cold_used l =
+  List.iter (fun a ->
+    if attr_equals_builtin a "cold"
+    then mark_used a.attr_name)
+    l
+
+let has_cold_attribute l =
+  List.exists (fun a -> attr_equals_builtin a "cold") l
+
 let mark_deprecated_mutable_used l =
   List.iter (fun a ->
     if attr_equals_builtin a "deprecated_mutable"

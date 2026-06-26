@@ -841,6 +841,9 @@ let rec comp_expr (exp : Lambda.lambda) : Blambda.blambda =
       match args with
       | [arg] -> Sequence (comp_expr arg, unit)
       | [] | _ :: _ :: _ -> wrong_arity ~expected:1)
+    | Pcold ->
+      (* Runtime no-op marker (nullary): bytecode ignores it. *)
+      unit
     | Pisnull -> unary (Ccall "caml_is_null")
     | Pstring_load_vec _ | Pbytes_load_vec _ | Pbytes_set_vec _
     | Pbigstring_load_vec _ | Pbigstring_set_vec _ | Pfloatarray_load_vec _

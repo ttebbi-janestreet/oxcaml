@@ -2626,6 +2626,7 @@ and store_constructor ~check type_decl type_id cstr_id cstr env =
   end);
   Builtin_attributes.mark_alerts_used cstr.cstr_attributes;
   Builtin_attributes.mark_warn_on_literal_pattern_used cstr.cstr_attributes;
+  Builtin_attributes.mark_cold_used cstr.cstr_attributes;
   let cda_shape = Shape.leaf cstr.cstr_uid in
   { env with
     constrs =

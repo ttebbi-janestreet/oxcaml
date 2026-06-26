@@ -431,6 +431,10 @@ type primitive =
   (* OxCaml hot-path marker: a runtime no-op signalling that all code able to
      reach this point is hot. Drives inlining budget and code layout. *)
   | Phot_path of float
+  (* OxCaml cold-path marker: a runtime no-op signalling that the code following
+     it is cold. Emitted by the pattern-match compiler for branches matching a
+     [@cold]-annotated constructor. Drives forward coldness and code layout. *)
+  | Pcold
   | Pget_idx of layout * Asttypes.mutable_flag
   | Pset_idx of layout * modify_mode
   | Pget_ptr of layout * Asttypes.mutable_flag

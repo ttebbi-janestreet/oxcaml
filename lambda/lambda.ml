@@ -420,6 +420,11 @@ type primitive =
      The placeholder value from [Translprim] is replaced with the actual
      (compile-time constant) factor in [Lambda_to_flambda]. *)
   | Phot_path of float
+  (* OxCaml cold-path marker (runtime no-op): signals that the code following it
+     is cold. Emitted by the pattern-match compiler at the start of a branch
+     matching a [@cold]-annotated constructor; maps to the Flambda 2 [Cold]
+     primitive. *)
+  | Pcold
   | Pget_idx of layout * Asttypes.mutable_flag
   | Pset_idx of layout * modify_mode
   | Pget_ptr of layout * Asttypes.mutable_flag
@@ -2571,6 +2576,7 @@ let primitive_may_allocate : primitive -> locality_mode option = function
     Some alloc_heap
   | Pcpu_relax -> if Config.poll_insertion then None else Some alloc_heap
   | Phot_path _ -> None
+  | Pcold -> None
   | Patomic_load_field _
   | Patomic_set_field _
   | Patomic_exchange_field _
@@ -2773,6 +2779,7 @@ let primitive_can_raise prim =
   | Pwith_stack_bind_preemptible | Pperform | Presume
   | Preperform -> true (* XXX! *)
   | Pdls_get | Ptls_get | Pdomain_index | Ppoll | Pcpu_relax | Phot_path _
+  | Pcold
   | Preinterpret_tagged_int63_as_unboxed_int64
   | Preinterpret_unboxed_int64_as_tagged_int63
   | Preinterpret_boxed_vector_as_tuple _
@@ -3210,6 +3217,7 @@ let primitive_result_layout (p : primitive) =
   | Ppoll -> layout_unit
   | Pcpu_relax -> layout_unit
   | Phot_path _ -> layout_unit
+  | Pcold -> layout_unit
   | Preinterpret_tagged_int63_as_unboxed_int64 -> layout_unboxed_int64
   | Preinterpret_unboxed_int64_as_tagged_int63 -> layout_int
   | Preinterpret_boxed_vector_as_tuple v -> layout_tupled_vector v

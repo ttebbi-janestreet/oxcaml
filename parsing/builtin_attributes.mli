@@ -109,6 +109,14 @@ val mark_alerts_used : Parsetree.attributes -> unit
     environment. *)
 val mark_warn_on_literal_pattern_used : Parsetree.attributes -> unit
 
+(** Marks "cold" attributes used for the purposes of misplaced attribute
+    warnings.  Call this when moving constructors into the environment: a
+    [@cold] constructor makes match branches that destructure it cold. *)
+val mark_cold_used : Parsetree.attributes -> unit
+
+(** Whether the attributes contain a "cold" (or "ocaml.cold") attribute. *)
+val has_cold_attribute : Parsetree.attributes -> bool
+
 (** Marks "deprecated_mutable" attributes used for the purposes of misplaced
     attribute warnings.  Call this when moving labels of mutable fields into the
     environment. *)

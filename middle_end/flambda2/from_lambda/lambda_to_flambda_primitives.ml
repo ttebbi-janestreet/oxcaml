@@ -3150,6 +3150,7 @@ let convert_lprim ~(machine_width : Target_system.Machine_width.t) ~big_endian
     [Ternary (Atomic_field_int_arith Xor, atomic, field, i)]
   | Pcpu_relax, _ -> [Nullary Cpu_relax]
   | Phot_path factor, _ -> [Nullary (Hot_path factor)]
+  | Pcold, _ -> [Nullary Cold]
   | Pdls_get, _ -> [Nullary Dls_get]
   | Ptls_get, _ -> [Nullary Tls_get]
   | Pdomain_index, _ -> [Nullary Domain_index]

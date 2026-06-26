@@ -3705,6 +3705,19 @@ let combine_extension_constructor value_kind loc arg pat_env pat_barrier partial
 let combine_regular_constructor value_kind loc arg cstr partial
     ctx def (descr_lambda_list, total1, pats) =
   (* Regular concrete type *)
+  (* A branch matching a [@cold]-annotated constructor is cold: prepend a cold
+     marker to its action, which Flambda 2 forward-coldness and the backend
+     code layout pick up. This is per-constructor, so an action shared with a
+     non-cold constructor (an or-pattern) stays hot for that constructor: each
+     tag gets its own (un)wrapped action below in [split_cases]. *)
+  let descr_lambda_list =
+    List.map
+      (fun ((descr, act) as case) ->
+        if Builtin_attributes.has_cold_attribute descr.cstr_attributes
+        then descr, Lsequence (Lprim (Pcold, [], loc), act)
+        else case)
+      descr_lambda_list
+  in
   let ncases = List.length descr_lambda_list
   and nconstrs = cstr.cstr_consts + cstr.cstr_nonconsts in
   let sig_complete = ncases = nconstrs in

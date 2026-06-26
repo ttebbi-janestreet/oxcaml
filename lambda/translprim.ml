@@ -2567,7 +2567,8 @@ let lambda_primitive_needs_event_after = function
   | Patomic_add_field | Patomic_sub_field
   | Patomic_land_field | Patomic_lor_field | Patomic_lxor_field
   | Patomic_load_field _ | Patomic_set_field _
-  | Pcpu_relax | Phot_path _ | Pctconst _ | Pint_as_pointer _ | Popaque _
+  | Pcpu_relax | Phot_path _ | Pcold | Pctconst _ | Pint_as_pointer _
+  | Popaque _
   | Pdls_get
   | Ptls_get
   | Pdomain_index
