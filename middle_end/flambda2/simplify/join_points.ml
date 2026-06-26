@@ -419,6 +419,36 @@ let compute_handler_env ?replay ?cut_after uses ~is_recursive ~env_at_fork
         denv, None, previous_extra_params_and_args
     in
     let handler_env = DE.with_join_analysis join_analysis handler_env in
+    (* Forward coldness (see [Downwards_env.cold]): a control-flow merge is cold
+       iff every predecessor is cold. This is asymmetric on purpose -- hotness
+       leaks across a merge if any predecessor is hot, but coldness only holds
+       if all are.
+
+       For a NON-recursive continuation [use_envs_with_ids] holds every
+       predecessor, so we AND coldness over them exactly.
+
+       For a RECURSIVE continuation [use_envs_with_ids] holds only the entry
+       (pre-loop) uses; the back-edge uses are not simplified yet. As everywhere
+       else for recursive handlers, we approximate the handler environment by
+       [env_at_fork], the lexical fork point: it dominates every use of the
+       continuation -- the entry edges (in the body after the fork) and the back
+       edges (in the handler body, which the loop header it dominates dominates
+       in turn). So the handler is cold exactly when the fork is. This is sound
+       (no predecessor of the header is reachable without passing through the
+       fork, so a cold fork means all predecessors are cold) and lets a loop
+       entered from a cold dominator be recognised as cold. *)
+    let cold =
+      if is_recursive
+      then DE.cold env_at_fork
+      else
+        match use_envs_with_ids with
+        | [] -> false
+        | _ :: _ ->
+          List.for_all
+            (fun (use_env, _, _) -> DE.cold use_env)
+            use_envs_with_ids
+    in
+    let handler_env = DE.set_cold handler_env cold in
     let escapes =
       List.exists
         (fun (_, _, (cont_use_kind : Continuation_use_kind.t)) ->

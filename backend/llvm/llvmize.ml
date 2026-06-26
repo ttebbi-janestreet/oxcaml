@@ -1290,6 +1290,7 @@ let basic_op t (i : Cfg.basic Cfg.instruction) (op : Operation.t) =
   | Intop_atomic { op; size; addr } -> atomic t i op ~size ~addr
   | Hint Cmm.Pause -> call_llvm_intrinsic_no_res t "x86.sse2.pause" []
   | Hint Cmm.Hot_path -> () (* hot-path marker: emits no code *)
+  | Hint Cmm.Cold_path -> () (* cold marker: emits no code *)
   | Dls_get ->
     let dls_state_ptr = load_domainstate_addr t Domain_dls_state in
     let dls_state = emit_ins t (I.load ~ptr:dls_state_ptr ~typ:T.i64) in

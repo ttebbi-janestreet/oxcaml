@@ -1597,6 +1597,7 @@ let emit_instr env i =
   | Lop Poll -> assembly_code_for_poll env i ~far:false ~return_label:None
   | Lop (Hint Cmm.Pause) -> A.ins0 YIELD
   | Lop (Hint Cmm.Hot_path) -> () (* hot-path marker: emits no code *)
+  | Lop (Hint Cmm.Cold_path) -> () (* cold marker: emits no code *)
   | Lop (Specific Ifar_poll) ->
     assembly_code_for_poll env i ~far:true ~return_label:None
   | Lop (Intop_imm (Iadd, n)) ->

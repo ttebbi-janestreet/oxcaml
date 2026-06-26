@@ -219,3 +219,87 @@ let tail_loop_2 n =
   in
   loop n;
   hot_path_to_here 10.
+
+(* ===== forward coldness ===== *)
+
+(* Code following a call to a [@cold] function is cold. Coldness is accurate (a
+   merge is cold only if every predecessor is cold) and so beats hotness when
+   they meet: a call that both reaches a marker and follows a [@cold] call is
+   cold, hence not warned about. *)
+
+(* A non-empty [@cold] function: [@cold] implies [@inline never], so the call is
+   not inlined and the code after it is cold. *)
+let[@cold] cold_fn () = ignore (Sys.opaque_identity 0)
+
+(* An empty [@cold] marker: although [@cold] implies [@inline never], the empty
+   body means the call is still inlined (i.e. removed) -- but it still marks the
+   following code as cold. *)
+let[@cold] mark_cold () = ()
+
+(* Cold beats hot: the probe reaches a marker (so the backward analysis would
+   mark it hot) but it follows a [@cold] call, so it is cold. *)
+let cold_beats_hot () =
+  cold_fn ();
+  not_inlinable () (* cold (beats hot) *);
+  hot_path_to_here 10.
+
+(* The empty marker is removed, yet the following probe is still cold. *)
+let empty_marker_propagates () =
+  mark_cold ();
+  not_inlinable () (* cold (beats hot) *);
+  hot_path_to_here 10.
+
+(* AND-merge: only the [then] path is cold, so the merge has a non-cold
+   predecessor and is therefore not cold -- the probe stays hot. *)
+let merge_one_cold c =
+  (if c then cold_fn () else ());
+  not_inlinable () (* HOT (merge not all-cold) *);
+  hot_path_to_here 10.
+
+(* AND-merge: both paths into the merge are cold, so the merge is cold and the
+   probe is cold. *)
+let merge_both_cold c =
+  (if c then cold_fn () else cold_fn ());
+  not_inlinable () (* cold (beats hot) *);
+  hot_path_to_here 10.
+
+(* The cold region ends at a merge with a hot sibling: the in-region probe is
+   cold, the post-merge probe is hot. *)
+let cold_then_merge c =
+  (if c
+   then (
+     cold_fn ();
+     not_inlinable () (* cold *))
+   else not_inlinable () (* HOT *));
+  hot_path_to_here 10.
+
+(* A loop entered from a cold dominator is cold. The probe in the loop body
+   reaches the marker (after the loop) on the back-edge, so the backward analysis
+   would mark it hot; but the recursive continuation's environment is
+   approximated by its fork, which follows the [@cold] call and is therefore
+   cold, so the whole loop is cold. *)
+let cold_loop n =
+  cold_fn ();
+  let rec loop i =
+    if Sys.opaque_identity i > 0
+    then (
+      not_inlinable () (* cold (loop dominated by a cold call) *);
+      loop (i - 1))
+    else ()
+  in
+  loop n;
+  hot_path_to_here 10.
+
+(* Contrast: the same loop with no preceding cold call has a hot fork, so its
+   body probe is hot. *)
+let hot_loop n =
+  let rec loop i =
+    if Sys.opaque_identity i > 0
+    then (
+      not_inlinable () (* HOT *);
+      if Sys.opaque_identity i > 10 then cold_fn();
+      loop (i - 1))
+    else ()
+  in
+  loop n;
+  hot_path_to_here 10.

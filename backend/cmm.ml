@@ -521,11 +521,12 @@ let equal_symbol { sym_name = left_sym_name; sym_global = left_sym_global }
 type hint_kind =
   | Pause
   | Hot_path
+  | Cold_path
 
 let equal_hint_kind (l : hint_kind) (r : hint_kind) =
   match l, r with
-  | Pause, Pause | Hot_path, Hot_path -> true
-  | (Pause | Hot_path), _ -> false
+  | Pause, Pause | Hot_path, Hot_path | Cold_path, Cold_path -> true
+  | (Pause | Hot_path | Cold_path), _ -> false
 
 type operation =
   | Capply of

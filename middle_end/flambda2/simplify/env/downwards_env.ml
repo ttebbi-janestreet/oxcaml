@@ -57,6 +57,12 @@ type t =
     inlining_state : Inlining_state.t;
     propagating_float_consts : bool;
     at_unit_toplevel : bool;
+    cold : bool;
+        (* Hot-path inlining (forward coldness): [true] when the code currently
+           being simplified follows a call to a [@cold] function. Cold overrides
+           hotness (see [Call_site_inlining_decision]). It is AND-merged at
+           continuation handlers (cold only if all predecessors are cold; see
+           [Join_points.compute_handler_env]). *)
     unit_toplevel_return_continuation : Continuation.t;
     unit_toplevel_exn_continuation : Continuation.t;
     variables_defined_at_toplevel : Variable.Set.t;
@@ -105,7 +111,7 @@ type t =
 let [@ocamlformat "disable"] print ppf { round; machine_width; typing_env;
                 inlined_debuginfo; disable_inlining;
                 inlining_state; propagating_float_consts;
-                at_unit_toplevel; unit_toplevel_exn_continuation;
+                at_unit_toplevel; cold = _; unit_toplevel_exn_continuation;
                 variables_defined_at_toplevel; cse; comparison_results;
                 are_rebuilding_terms; closure_info;
                 unit_toplevel_return_continuation; all_code;
@@ -228,6 +234,7 @@ let create ~round ~machine_width ~(resolver : resolver)
       inlining_state = Inlining_state.default ~round;
       propagating_float_consts;
       at_unit_toplevel = true;
+      cold = false;
       unit_toplevel_return_continuation;
       unit_toplevel_exn_continuation;
       variables_defined_at_toplevel = Variable.Set.empty;
@@ -283,6 +290,10 @@ let at_unit_toplevel t = t.at_unit_toplevel
 
 let set_at_unit_toplevel_state t at_unit_toplevel = { t with at_unit_toplevel }
 
+let cold t = t.cold
+
+let set_cold t cold = { t with cold }
+
 let is_defined_at_toplevel t var =
   Variable.Set.mem var t.variables_defined_at_toplevel
 
@@ -315,6 +326,7 @@ let enter_set_of_closures
       inlining_state;
       propagating_float_consts;
       at_unit_toplevel = _;
+      cold = _;
       unit_toplevel_return_continuation;
       unit_toplevel_exn_continuation;
       variables_defined_at_toplevel;
@@ -345,6 +357,7 @@ let enter_set_of_closures
     inlining_state;
     propagating_float_consts;
     at_unit_toplevel = false;
+    cold = false;
     unit_toplevel_return_continuation;
     unit_toplevel_exn_continuation;
     variables_defined_at_toplevel;
@@ -778,6 +791,7 @@ let denv_for_lifted_continuation ~denv_for_join ~denv =
     all_code = denv_for_join.all_code;
     typing_env = denv_for_join.typing_env;
     at_unit_toplevel = denv_for_join.at_unit_toplevel;
+    cold = denv_for_join.cold;
     variables_defined_at_toplevel = denv_for_join.variables_defined_at_toplevel;
     cse = denv_for_join.cse;
     comparison_results = denv_for_join.comparison_results;

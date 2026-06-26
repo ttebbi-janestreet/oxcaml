@@ -1115,6 +1115,7 @@ let nullary_primitive _env res dbg prim =
   | Poll -> None, res, C.poll ~dbg
   | Cpu_relax -> None, res, C.cpu_relax ~dbg
   | Hot_path _ -> None, res, C.hot_path ~dbg
+  | Cold -> None, res, C.cold ~dbg
 
 let imm_or_ptr : P.Block_access_field_kind.t -> Lambda.immediate_or_pointer =
  fun block_access_kind ->

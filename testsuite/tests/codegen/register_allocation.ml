@@ -18,11 +18,10 @@
 open Intrinsics
 
 (* CR ttebbi:
-  - The cold branch should be moved to the end.
   - CFG prologue shrink wrap is not working
 *)
 let spill_cold_path x =
-  let[@cold] cold () = () in
+  let[@cold] cold () = Sys.opaque_identity () in
   let x = x + 1 in
   if x = 100 then cold();
   x + 2
@@ -32,16 +31,18 @@ spill_cold_path:
   subq  $8, %rsp
   addq  $2, %rax
   cmpq  $201, %rax
-  jne   .L1
-  movq  %rax, (%rsp)
-  movl  $1, %eax
-  call  camlTOP2__cold_1_3_code@PLT
+  je    .L1
 .L0:
-  movq  (%rsp), %rax
-.L1:
   addq  $4, %rax
   addq  $8, %rsp
   ret
+.L1:
+  movq  %rax, (%rsp)
+  movl  $1, %eax
+  call  camlTOP2__cold_1_3_code@PLT
+.L2:
+  movq  (%rsp), %rax
+  jmp   .L0
 
 spill_cold_path.cold:
   movl  $1, %eax
@@ -413,7 +414,7 @@ double_loop_no_definition_at_beginning.f:
   movl  $1, %eax
   ret
 .L0:
-  movq  camlTOP15__block741@GOTPCREL(%rip), %rax
+  movq  camlTOP15__block747@GOTPCREL(%rip), %rax
   movq  48(%r14), %rsp
   popq  48(%r14)
   popq  %r11

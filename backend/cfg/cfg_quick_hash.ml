@@ -42,6 +42,7 @@ let operation : Operation.t -> int =
   | Name_for_debugger _ -> 31
   | Alloc _ -> 32
   | Hint Cmm.Hot_path -> 33
+  | Hint Cmm.Cold_path -> 34
 
 let basic : Cfg.basic -> int = function
   | Op op -> operation op

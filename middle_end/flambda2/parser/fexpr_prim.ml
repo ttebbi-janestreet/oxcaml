@@ -677,6 +677,8 @@ let hot_path =
   (* The fexpr textual format does not carry the hot-path factor; default it. *)
   D.(nullary "%hot_path_to_here" ~params:param0 (fun _env () -> P.Hot_path 1.0))
 
+let cold = D.(nullary "%cold" ~params:param0 (fun _env () -> P.Cold))
+
 (* Unaries *)
 let block_load =
   D.(
@@ -1249,6 +1251,7 @@ module OfFlambda = struct
     | Poll -> poll env ()
     | Cpu_relax -> cpu_relax env ()
     | Hot_path _ -> hot_path env ()
+    | Cold -> cold env ()
 
   let unop env (op : P.unary_primitive) =
     match op with

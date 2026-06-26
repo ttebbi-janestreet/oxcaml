@@ -386,6 +386,12 @@ type nullary_primitive =
           reach this point is hot; affects code layout, and multiplies the
           inlining budget of reaching call sites by the given (compile-time
           constant) factor. *)
+  | Cold
+      (** OxCaml cold marker (runtime no-op). Signals that all code reachable
+          from this point is cold (forward, until a control-flow merge with a
+          non-cold path). Introduced when an empty [@cold] marker function is
+          called; persists across re-simplification (re-seeding [DE.cold]) and
+          reaches the backend to drive cold code layout. *)
 
 (** Untagged binary integer arithmetic operations.
 

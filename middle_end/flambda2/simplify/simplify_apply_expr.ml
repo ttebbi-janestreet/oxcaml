@@ -183,7 +183,7 @@ let simplify_direct_tuple_application ~simplify_expr dacc apply
 
 let rebuild_non_inlined_direct_full_application apply ~use_id ~exn_cont_use_id
     ~result_arity ~coming_from_indirect ~callee's_code_metadata:_
-    ~callee_code_unavailable uacc ~after_rebuild =
+    ~callee_code_unavailable ~apply_is_cold uacc ~after_rebuild =
   let uacc =
     if coming_from_indirect
     then
@@ -232,6 +232,15 @@ let rebuild_non_inlined_direct_full_application apply ~use_id ~exn_cont_use_id
       | Some a, Some b -> Some (Float.max a b)
     in
     match factor, Apply.hot_inline_factor apply with
+    | _, _ when apply_is_cold -> (
+      (* Forward coldness beats backward hotness: this call follows a [@cold]
+         call, so even though it can reach a marker it is not on a hot path. We
+         do not stamp it hot (no inlining boost) and do not warn; we also clear
+         any stale hotness from an earlier round (e.g. if the [@cold] call was
+         only revealed later by inlining). *)
+      match Apply.hot_inline_factor apply with
+      | None -> apply, uacc
+      | Some _ -> Apply.with_hot_inline_factor apply None, uacc)
     | Some factor, None ->
       (* The call has just transitioned cold -> hot. If the callee's code is
          unavailable it can never be inlined despite being hot, so warn -- here
@@ -269,178 +278,247 @@ type inlining_decision =
 let simplify_direct_full_application ~simplify_expr dacc apply function_type
     ~params_arity ~result_arity ~(result_types : _ Or_unknown_or_bottom.t)
     ~down_to_up ~coming_from_indirect ~callee's_code_metadata =
-  let inlined =
-    match function_type with
-    | None ->
-      (* No rec info available, prevent inlining to avoid problems *)
-      Do_not_inline { erase_attribute = false; callee_code_unavailable = false }
-    | Some function_type -> (
-      let decision =
-        Call_site_inlining_decision.make_decision dacc ~simplify_expr ~apply
-          ~function_type ~return_arity:result_arity
-      in
-      let unrolling_depth =
-        Simplify_rec_info_expr.known_remaining_unrolling_depth dacc
-          (Call_site_inlining_decision.get_rec_info dacc ~function_type)
+  let empty_cold_marker_return =
+    (* [Some return_cont] iff the callee is an empty [@cold] marker returning a
+       single value (unit), so that we can rewrite the call to a [Cold] marker
+       jumping to [return_cont]. *)
+    match Apply.continuation apply with
+    | Never_returns -> None
+    | Return return_continuation ->
+      let code_or_metadata =
+        DE.find_code_exn (DA.denv dacc)
+          (Code_metadata.code_id callee's_code_metadata)
       in
       if
-        Are_rebuilding_terms.do_rebuild_terms
-          (DE.are_rebuilding_terms (DA.denv dacc))
-      then
-        Inlining_report.record_decision_at_call_site_for_known_function
-          ~pass:Inlining_report.Pass.Before_simplify ~unrolling_depth
-          ~callee:(Code_metadata.absolute_history callee's_code_metadata)
-          ~tracker:(DE.inlining_history_tracker (DA.denv dacc))
-          ~are_rebuilding_terms:(DA.are_rebuilding_terms dacc)
-          ~apply decision;
-      (* [Missing_code] means the callee's code is not available for inlining
-         (e.g. compiled in another unit without being exported for inlining). A
-         hot call to such a callee is warned about in
-         [rebuild_non_inlined_direct_full_application]. *)
-      let callee_code_unavailable =
-        match[@ocaml.warning "-4"] decision with
-        | Missing_code -> true
-        | _ -> false
-      in
-      match Call_site_inlining_decision_type.can_inline decision with
-      | Do_not_inline { erase_attribute_if_ignored } ->
-        Do_not_inline
-          { erase_attribute = erase_attribute_if_ignored;
-            callee_code_unavailable
-          }
-      | Inline { unroll_to; was_inline_always } ->
-        let dacc =
-          DA.map_denv dacc ~f:(DE.record_inlining_decision ~apply decision)
-        in
-        let dacc, inlined =
-          Inlining_transforms.inline dacc ~apply ~unroll_to ~was_inline_always
-            function_type
-        in
-        Inline (dacc, inlined))
+        Call_site_inlining_decision.is_empty_cold_marker
+          ~code_metadata:callee's_code_metadata code_or_metadata
+        && Flambda_arity.cardinal_unarized result_arity = 1
+      then Some return_continuation
+      else None
   in
-  match inlined with
-  | Inline (dacc, inlined) -> simplify_expr dacc inlined ~down_to_up
-  | Do_not_inline { erase_attribute; callee_code_unavailable } -> (
-    let apply =
-      let inlined : Inlined_attribute.t =
-        if erase_attribute
-        then Default_inlined
-        else
-          Inlined_attribute.with_use_info (Apply.inlined apply)
-            Unused_because_of_call_site_decision
-      in
-      Apply.with_inlined_attribute apply inlined
+  match empty_cold_marker_return with
+  | Some return_continuation ->
+    (* The callee is an empty [@cold] marker (e.g. [let cold[@cold] () = ()]).
+       Rather than emit a call, rewrite it to a persistent [Cold] marker --
+       which re-seeds [DE.cold] on every re-simplification round (see
+       [Simplify_nullary_primitive]) and reaches the backend to drive cold code
+       layout (see [Cfg_hot_path]) -- followed by a jump to the return
+       continuation. *)
+    let dbg = Apply.dbg apply in
+    let cold_var = Variable.create "cold_marker" K.value in
+    let bound =
+      Bound_pattern.singleton
+        (Bound_var.create cold_var Flambda_debug_uid.none Name_mode.normal)
     in
-    match loopify_decision_for_call dacc apply with
-    | Loopify self_cont ->
-      simplify_self_tail_call dacc apply self_cont ~down_to_up
-    | Do_not_loopify ->
-      let dacc, use_id, result_continuation =
-        let result_continuation = Apply.continuation apply in
-        match result_continuation, result_types with
-        | Never_returns, (Unknown | Bottom | Ok _) | Return _, Bottom ->
-          dacc, None, Apply.Result_continuation.Never_returns
-        | Return apply_return_continuation, Unknown ->
-          let dacc, use_id =
-            DA.record_continuation_use dacc apply_return_continuation
-              (Non_inlinable { escaping = true })
-              ~env_at_use:(DA.denv dacc)
-              ~arg_types:
-                (T.unknown_types_from_arity result_arity
-                   ~machine_width:(DE.machine_width (DA.denv dacc)))
+    let expr =
+      Let.create bound
+        (Named.create_prim (P.Nullary P.Cold) dbg)
+        ~body:
+          (Expr.create_apply_cont
+             (Apply_cont.create return_continuation
+                ~args:[Simple.var cold_var]
+                ~dbg))
+        ~free_names_of_body:Unknown
+      |> Expr.create_let
+    in
+    simplify_expr dacc expr ~down_to_up
+  | None -> (
+    (* Forward coldness: code following a call to a [@cold] function is cold. We
+       mark the dacc cold after the inlining decision (which uses the pre-call
+       coldness) so that the recorded uses of the return and exception
+       continuations -- i.e. the code following this call -- become cold. The
+       coldness is AND-merged at continuation handlers (see
+       [Join_points.compute_handler_env]) and overrides hotness in the inlining
+       decision (see [Call_site_inlining_decision.might_inline]). *)
+    let callee_is_cold = Code_metadata.cold callee's_code_metadata in
+    let mark_cold dacc =
+      if callee_is_cold
+      then DA.map_denv dacc ~f:(fun denv -> DE.set_cold denv true)
+      else dacc
+    in
+    let inlined =
+      match function_type with
+      | None ->
+        (* No rec info available, prevent inlining to avoid problems *)
+        Do_not_inline
+          { erase_attribute = false; callee_code_unavailable = false }
+      | Some function_type -> (
+        let decision =
+          Call_site_inlining_decision.make_decision dacc ~simplify_expr ~apply
+            ~function_type ~return_arity:result_arity
+        in
+        let unrolling_depth =
+          Simplify_rec_info_expr.known_remaining_unrolling_depth dacc
+            (Call_site_inlining_decision.get_rec_info dacc ~function_type)
+        in
+        if
+          Are_rebuilding_terms.do_rebuild_terms
+            (DE.are_rebuilding_terms (DA.denv dacc))
+        then
+          Inlining_report.record_decision_at_call_site_for_known_function
+            ~pass:Inlining_report.Pass.Before_simplify ~unrolling_depth
+            ~callee:(Code_metadata.absolute_history callee's_code_metadata)
+            ~tracker:(DE.inlining_history_tracker (DA.denv dacc))
+            ~are_rebuilding_terms:(DA.are_rebuilding_terms dacc)
+            ~apply decision;
+        (* [Missing_code] means the callee's code is not available for inlining
+           (e.g. compiled in another unit without being exported for inlining).
+           A hot call to such a callee is warned about in
+           [rebuild_non_inlined_direct_full_application]. *)
+        let callee_code_unavailable =
+          match[@ocaml.warning "-4"] decision with
+          | Missing_code -> true
+          | _ -> false
+        in
+        match Call_site_inlining_decision_type.can_inline decision with
+        | Do_not_inline { erase_attribute_if_ignored } ->
+          Do_not_inline
+            { erase_attribute = erase_attribute_if_ignored;
+              callee_code_unavailable
+            }
+        | Inline { unroll_to; was_inline_always } ->
+          let dacc =
+            DA.map_denv dacc ~f:(DE.record_inlining_decision ~apply decision)
           in
-          dacc, Some use_id, result_continuation
-        | Return apply_return_continuation, Ok result_types ->
-          Result_types.pattern_match result_types
-            ~f:(fun ~params ~results env_extension ->
-              if
-                Flambda_arity.cardinal_unarized params_arity
-                <> Bound_parameters.cardinal params
-              then
-                Misc.fatal_errorf
-                  "Params arity %a does not match up with params in the result \
-                   types structure:@ %a@ for application:@ %a"
-                  Flambda_arity.print params_arity Result_types.print
-                  result_types Apply.print apply;
-              if
-                Flambda_arity.cardinal_unarized result_arity
-                <> Bound_parameters.cardinal results
-              then
-                Misc.fatal_errorf
-                  "Result arity %a does not match up with the result types \
-                   structure:@ %a@ for application:@ %a"
-                  Flambda_arity.print params_arity Result_types.print
-                  result_types Apply.print apply;
-              let denv = DA.denv dacc in
-              let denv =
-                DE.add_parameters_with_unknown_types ~extra:false
-                  ~name_mode:Name_mode.in_types denv params
-              in
-              let params = Bound_parameters.to_list params in
-              let results = Bound_parameters.to_list results in
-              let denv =
-                let args = Apply.args apply in
-                assert (List.compare_lengths params args = 0);
-                List.fold_left2
-                  (fun denv param arg ->
-                    DE.add_equation_on_variable denv (BP.var param)
-                      (T.alias_type_of
-                         (K.With_subkind.kind (BP.kind param))
-                         arg))
-                  denv params args
-              in
-              let result_arity =
-                Flambda_arity.unarized_components result_arity
-              in
-              let denv =
-                List.fold_left2
-                  (fun denv kind result ->
-                    let result_var, result_uid = BP.var_and_uid result in
-                    DE.add_variable denv
-                      (VB.create result_var result_uid NM.in_types)
-                      (T.unknown_with_subkind kind
-                         ~machine_width:(DE.machine_width denv)))
-                  denv result_arity results
-              in
-              let denv = DE.extend_typing_environment denv env_extension in
-              (* Note: the result types of the application will go into a meet
-                 with the kind information on the parameter(s) of the return
-                 continuation (just like the normal [Apply_cont] case where the
-                 meet is only done upon reaching the handler). *)
-              let arg_types =
-                List.map2
-                  (fun kind result_var ->
-                    T.alias_type_of (K.With_subkind.kind kind)
-                      (BP.simple result_var))
-                  result_arity results
-              in
-              let dacc = DA.with_denv dacc denv in
-              let dacc, use_id =
-                DA.record_continuation_use dacc apply_return_continuation
-                  (Non_inlinable { escaping = true })
-                  ~env_at_use:(DA.denv dacc) ~arg_types
-              in
-              dacc, Some use_id, result_continuation)
+          let dacc, inlined =
+            Inlining_transforms.inline dacc ~apply ~unroll_to ~was_inline_always
+              function_type
+          in
+          Inline (dacc, inlined))
+    in
+    match inlined with
+    | Inline (dacc, inlined) ->
+      simplify_expr (mark_cold dacc) inlined ~down_to_up
+    | Do_not_inline { erase_attribute; callee_code_unavailable } -> (
+      (* The apply's own coldness (does this call follow a [@cold] call?) is the
+         coldness coming into the call, i.e. before [mark_cold] propagates
+         coldness to the code that follows. A cold call is not treated as hot,
+         even if it can reach a marker (forward coldness is accurate; see
+         [Downwards_env.cold] and
+         [rebuild_non_inlined_direct_full_application]). *)
+      let apply_is_cold = DE.cold (DA.denv dacc) in
+      let dacc = mark_cold dacc in
+      let apply =
+        let inlined : Inlined_attribute.t =
+          if erase_attribute
+          then Default_inlined
+          else
+            Inlined_attribute.with_use_info (Apply.inlined apply)
+              Unused_because_of_call_site_decision
+        in
+        Apply.with_inlined_attribute apply inlined
       in
-      let dacc, exn_cont_use_id =
-        DA.record_continuation_use dacc
-          (Exn_continuation.exn_handler (Apply.exn_continuation apply))
-          (Non_inlinable { escaping = true })
-          ~env_at_use:(DA.denv dacc)
-          ~arg_types:
-            (T.unknown_types_from_arity
-               (Exn_continuation.arity (Apply.exn_continuation apply))
-               ~machine_width:(DE.machine_width (DA.denv dacc)))
-      in
-      let apply = Apply.with_continuation apply result_continuation in
-      let dacc =
-        record_free_names_of_apply_as_used dacc ~use_id ~exn_cont_use_id apply
-      in
-      down_to_up dacc
-        ~rebuild:
-          (rebuild_non_inlined_direct_full_application apply ~use_id
-             ~exn_cont_use_id ~result_arity ~coming_from_indirect
-             ~callee's_code_metadata ~callee_code_unavailable))
+      match loopify_decision_for_call dacc apply with
+      | Loopify self_cont ->
+        simplify_self_tail_call dacc apply self_cont ~down_to_up
+      | Do_not_loopify ->
+        let dacc, use_id, result_continuation =
+          let result_continuation = Apply.continuation apply in
+          match result_continuation, result_types with
+          | Never_returns, (Unknown | Bottom | Ok _) | Return _, Bottom ->
+            dacc, None, Apply.Result_continuation.Never_returns
+          | Return apply_return_continuation, Unknown ->
+            let dacc, use_id =
+              DA.record_continuation_use dacc apply_return_continuation
+                (Non_inlinable { escaping = true })
+                ~env_at_use:(DA.denv dacc)
+                ~arg_types:
+                  (T.unknown_types_from_arity result_arity
+                     ~machine_width:(DE.machine_width (DA.denv dacc)))
+            in
+            dacc, Some use_id, result_continuation
+          | Return apply_return_continuation, Ok result_types ->
+            Result_types.pattern_match result_types
+              ~f:(fun ~params ~results env_extension ->
+                if
+                  Flambda_arity.cardinal_unarized params_arity
+                  <> Bound_parameters.cardinal params
+                then
+                  Misc.fatal_errorf
+                    "Params arity %a does not match up with params in the \
+                     result types structure:@ %a@ for application:@ %a"
+                    Flambda_arity.print params_arity Result_types.print
+                    result_types Apply.print apply;
+                if
+                  Flambda_arity.cardinal_unarized result_arity
+                  <> Bound_parameters.cardinal results
+                then
+                  Misc.fatal_errorf
+                    "Result arity %a does not match up with the result types \
+                     structure:@ %a@ for application:@ %a"
+                    Flambda_arity.print params_arity Result_types.print
+                    result_types Apply.print apply;
+                let denv = DA.denv dacc in
+                let denv =
+                  DE.add_parameters_with_unknown_types ~extra:false
+                    ~name_mode:Name_mode.in_types denv params
+                in
+                let params = Bound_parameters.to_list params in
+                let results = Bound_parameters.to_list results in
+                let denv =
+                  let args = Apply.args apply in
+                  assert (List.compare_lengths params args = 0);
+                  List.fold_left2
+                    (fun denv param arg ->
+                      DE.add_equation_on_variable denv (BP.var param)
+                        (T.alias_type_of
+                           (K.With_subkind.kind (BP.kind param))
+                           arg))
+                    denv params args
+                in
+                let result_arity =
+                  Flambda_arity.unarized_components result_arity
+                in
+                let denv =
+                  List.fold_left2
+                    (fun denv kind result ->
+                      let result_var, result_uid = BP.var_and_uid result in
+                      DE.add_variable denv
+                        (VB.create result_var result_uid NM.in_types)
+                        (T.unknown_with_subkind kind
+                           ~machine_width:(DE.machine_width denv)))
+                    denv result_arity results
+                in
+                let denv = DE.extend_typing_environment denv env_extension in
+                (* Note: the result types of the application will go into a meet
+                   with the kind information on the parameter(s) of the return
+                   continuation (just like the normal [Apply_cont] case where
+                   the meet is only done upon reaching the handler). *)
+                let arg_types =
+                  List.map2
+                    (fun kind result_var ->
+                      T.alias_type_of (K.With_subkind.kind kind)
+                        (BP.simple result_var))
+                    result_arity results
+                in
+                let dacc = DA.with_denv dacc denv in
+                let dacc, use_id =
+                  DA.record_continuation_use dacc apply_return_continuation
+                    (Non_inlinable { escaping = true })
+                    ~env_at_use:(DA.denv dacc) ~arg_types
+                in
+                dacc, Some use_id, result_continuation)
+        in
+        let dacc, exn_cont_use_id =
+          DA.record_continuation_use dacc
+            (Exn_continuation.exn_handler (Apply.exn_continuation apply))
+            (Non_inlinable { escaping = true })
+            ~env_at_use:(DA.denv dacc)
+            ~arg_types:
+              (T.unknown_types_from_arity
+                 (Exn_continuation.arity (Apply.exn_continuation apply))
+                 ~machine_width:(DE.machine_width (DA.denv dacc)))
+        in
+        let apply = Apply.with_continuation apply result_continuation in
+        let dacc =
+          record_free_names_of_apply_as_used dacc ~use_id ~exn_cont_use_id apply
+        in
+        down_to_up dacc
+          ~rebuild:
+            (rebuild_non_inlined_direct_full_application apply ~use_id
+               ~exn_cont_use_id ~result_arity ~coming_from_indirect
+               ~callee's_code_metadata ~callee_code_unavailable ~apply_is_cold))
+    )
 
 (* CR mshinwell: need to work out what to do for local alloc transformations
    when there are zero args. *)

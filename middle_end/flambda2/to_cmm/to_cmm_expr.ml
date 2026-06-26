@@ -309,13 +309,23 @@ let translate_apply0 ~dbg_with_inlined:dbg env res apply =
     in
     match Apply.probe apply with
     | None ->
-      ( C.direct_call ~dbg
+      let call =
+        C.direct_call ~dbg
           (C.Extended_machtype.to_machtype return_ty)
-          pos code_sym args,
-        free_vars,
-        env,
-        res,
-        Ece.all )
+          pos code_sym args
+      in
+      (* A direct call to a [@cold] function: emit a cold marker before the call
+         so the calling block, and the cold code reachable from it, are laid out
+         in the cold section (see [Cfg_hot_path]). We do this here, in [to_cmm]
+         (after all simplification rounds), so the marker is inserted exactly
+         once and not multiplied across rounds. (An empty [@cold] marker already
+         carries its own [Cold] primitive from simplification.) *)
+      let call =
+        if Code_metadata.cold code_metadata
+        then C.sequence (C.cold ~dbg) call
+        else call
+      in
+      call, free_vars, env, res, Ece.all
     | Some { name; enabled_at_init } ->
       ( C.probe ~dbg ~name ~handler_code_linkage_name:code_sym.sym_name ~args
           ~enabled_at_init

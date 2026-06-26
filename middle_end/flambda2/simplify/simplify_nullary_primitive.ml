@@ -74,3 +74,15 @@ let simplify_nullary_primitive dacc original_prim (prim : P.nullary_primitive)
     let ty = T.this_tagged_immediate (Target_ocaml_int.zero machine_width) in
     let dacc = DA.add_variable dacc result_var ty in
     Simplify_primitive_result.create named ~try_reify:false dacc
+  | Cold ->
+    (* Forward coldness (see [Downwards_env.cold]): code after a [Cold] marker
+       is cold. We set [DE.cold] on the returned [dacc] so the rest of the
+       continuation -- and, via the recorded continuation uses, the code that
+       follows -- is simplified as cold. Because the marker is a persistent term
+       node, this re-seeds [DE.cold] on every re-simplification round. *)
+    let named = Named.create_prim original_prim dbg in
+    let machine_width = DE.machine_width (DA.denv dacc) in
+    let ty = T.this_tagged_immediate (Target_ocaml_int.zero machine_width) in
+    let dacc = DA.add_variable dacc result_var ty in
+    let dacc = DA.map_denv dacc ~f:(fun denv -> DE.set_cold denv true) in
+    Simplify_primitive_result.create named ~try_reify:false dacc

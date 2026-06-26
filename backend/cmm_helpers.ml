@@ -5501,6 +5501,8 @@ let cpu_relax ~dbg =
 
 let hot_path ~dbg = return_unit dbg (Cop (Chint Hot_path, [], dbg))
 
+let cold ~dbg = return_unit dbg (Cop (Chint Cold_path, [], dbg))
+
 module Scalar_type = struct
   module Float_width = struct
     type t = Cmm.float_width =

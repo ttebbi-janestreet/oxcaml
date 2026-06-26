@@ -366,10 +366,10 @@ module Cse_generic (Target : Cfg_cse_target_intf.S) = struct
       (* We don't want to reorder loads across [pause], since it's used to spin
          on memory locations. *)
       kill_loads n
-    | Op (Hint Cmm.Hot_path) ->
-      (* The hot-path marker has no memory semantics; leave numbering untouched.
-         It is never a CSE candidate (no result) and is preserved by
-         selection. *)
+    | Op (Hint (Cmm.Hot_path | Cmm.Cold_path)) ->
+      (* The hot-path / cold markers have no memory semantics; leave numbering
+         untouched. They are never CSE candidates (no result) and are preserved
+         by selection. *)
       n
     | Op (Alloc _) | Op Poll ->
       (* For allocations, we must avoid extending the live range of a

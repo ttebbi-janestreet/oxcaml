@@ -337,6 +337,7 @@ let operation d = function
   | Cpoll -> "poll"
   | Chint Pause -> "pause"
   | Chint Hot_path -> "hot_path"
+  | Chint Cold_path -> "cold"
 
 let rec expr ppf = function
   | Cconst_int (n, _dbg) -> fprintf ppf "%i" n

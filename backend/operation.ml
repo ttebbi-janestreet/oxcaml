@@ -466,6 +466,7 @@ let dump ppf op =
   | Poll -> Format.fprintf ppf "poll"
   | Hint Cmm.Pause -> Format.fprintf ppf "pause"
   | Hint Cmm.Hot_path -> Format.fprintf ppf "hot_path"
+  | Hint Cmm.Cold_path -> Format.fprintf ppf "cold"
   | Alloc { bytes; dbginfo = _; mode = Heap } ->
     Format.fprintf ppf "alloc %i" bytes
   | Alloc { bytes; dbginfo = _; mode = Local } ->

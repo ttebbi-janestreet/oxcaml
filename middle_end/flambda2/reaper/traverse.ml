@@ -201,7 +201,8 @@ let traverse_prim denv acc ~bound_pattern (prim : Flambda_primitive.t) ~default
         Acc.add_accessor_dep acc ~to_ Field.get_tag ~base:name)
   | Nullary
       ( Invalid _ | Optimised_out _ | Probe_is_enabled _ | Enter_inlined_apply _
-      | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax | Hot_path _ )
+      | Dls_get | Tls_get | Domain_index | Poll | Cpu_relax | Hot_path _ | Cold
+        )
   | Unary
       ( ( Duplicate_block _ | Duplicate_array _
         | Is_int { variant_only = false }

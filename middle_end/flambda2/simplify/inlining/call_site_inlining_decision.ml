@@ -186,6 +186,37 @@ let inlining_does_decrease_code_size ~code_or_metadata cost_metrics =
   let inlined_code_size = Cost_metrics.size cost_metrics in
   not (Code_size.( <= ) original_code_size inlined_code_size)
 
+(* A [@cold] marker function whose body does nothing other than return to its
+   caller, e.g. [let cold () = ()]. Such a function is normally not inlined
+   because [@cold] implies [@inline never]. The programmer uses it purely to
+   mark the following code as cold (see [Downwards_env.cold]), not to call
+   anything; so rather than emit a call, [Simplify_apply_expr] rewrites the call
+   to a persistent [Cold] marker (see [Flambda_primitive.Cold]) followed by a
+   jump to the return continuation. *)
+let is_empty_cold_marker ~code_metadata code_or_metadata =
+  Code_metadata.cold code_metadata
+  &&
+  match Code_or_metadata.view code_or_metadata with
+  | Metadata_only _ -> false
+  | Code_present code ->
+    Function_params_and_body.pattern_match (Code.params_and_body code)
+      ~f:(fun
+          ~return_continuation
+          ~exn_continuation:_
+          _params
+          ~body
+          ~my_closure:_
+          ~is_my_closure_used:_
+          ~my_alloc_mode:_
+          ~my_depth:_
+          ~free_names_of_body:_
+        ->
+        match Expr.descr body with
+        | Apply_cont ac ->
+          Continuation.equal (Apply_cont.continuation ac) return_continuation
+          && Option.is_none (Apply_cont.trap_action ac)
+        | Let _ | Let_cont _ | Apply _ | Switch _ | Invalid _ -> false)
+
 let might_inline dacc ~apply ~code_or_metadata ~function_type ~simplify_expr
     ~return_arity : Call_site_inlining_decision_type.t =
   let denv = DA.denv dacc in
@@ -261,11 +292,20 @@ let might_inline dacc ~apply ~code_or_metadata ~function_type ~simplify_expr
                [Apply.hot_inline_factor] is set by the flow analysis (see
                [Flow_analysis.reaches_hot_marker] and the re-simplification
                triggered in [Simplify_apply_expr]); inlining revealing more
-               markers across rounds cascades the hotness. *)
+               markers across rounds cascades the hotness.
+
+               Forward coldness OVERRIDES hotness: a call site that follows a
+               [@cold] call (see [DE.cold], propagated in the down pass and
+               AND-merged at continuation handlers) keeps the base budget even
+               if it was over-approximated as hot, because coldness is
+               accurate. *)
             let base = Inlining_arguments.threshold inlining_args in
-            match Apply.hot_inline_factor apply with
-            | Some factor -> base *. factor
-            | None -> base
+            if DE.cold denv
+            then base
+            else
+              match Apply.hot_inline_factor apply with
+              | Some factor -> base *. factor
+              | None -> base
           in
           let is_under_inline_threshold =
             Float.compare evaluated_to threshold <= 0

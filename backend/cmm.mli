@@ -419,6 +419,7 @@ val equal_symbol : symbol -> symbol -> bool
 type hint_kind =
   | Pause  (** Arch-specific pause/yield, used to spin on memory. *)
   | Hot_path  (** OxCaml hot-path marker (affects inlining and code layout). *)
+  | Cold_path  (** OxCaml cold marker (affects code layout). *)
 
 val equal_hint_kind : hint_kind -> hint_kind -> bool
 

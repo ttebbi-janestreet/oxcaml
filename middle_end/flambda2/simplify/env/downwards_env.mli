@@ -53,6 +53,13 @@ val at_unit_toplevel : t -> bool
 
 val set_at_unit_toplevel_state : t -> bool -> t
 
+(** Hot-path inlining (forward coldness): [true] when the code being simplified
+    follows a call to a [@cold] function. Cold overrides hotness in the inlining
+    decision. *)
+val cold : t -> bool
+
+val set_cold : t -> bool -> t
+
 val is_defined_at_toplevel : t -> Variable.t -> bool
 
 val add_symbol_projection : t -> Variable.t -> Symbol_projection.t -> t

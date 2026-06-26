@@ -2261,6 +2261,7 @@ let emit_instr ~first ~last ~fallthrough i =
     D.define_label lbl_after_poll
   | Lop (Hint Cmm.Pause) -> I.pause ()
   | Lop (Hint Cmm.Hot_path) -> () (* hot-path marker: emits no code *)
+  | Lop (Hint Cmm.Cold_path) -> () (* cold marker: emits no code *)
   | Lop (Intop (Icomp cmp)) ->
     if
       Reg.is_reg i.res.(0)
