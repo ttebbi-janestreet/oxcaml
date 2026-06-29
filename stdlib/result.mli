@@ -27,7 +27,9 @@ open! Stdlib
 
 (** {1:results Results} *)
 
-type ('a : value_or_null, 'e : value_or_null) t = ('a, 'e) result = Ok of 'a | Error of 'e [@cold] (**)
+type ('a : value_or_null, 'e : value_or_null) t = ('a, 'e) result =
+  | Ok of 'a
+  | Error of 'e [@cold] (**)
 (** The type for result values. Either a value [Ok v] or an error [Error e]. *)
 
 val ok : ('a : value_or_null) ('e : value_or_null). 'a -> ('a, 'e) result

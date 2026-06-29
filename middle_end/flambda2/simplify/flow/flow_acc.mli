@@ -125,3 +125,9 @@ val add_apply_cont_args :
 (** Add extra params and args to a continuation. *)
 val add_extra_params_and_args :
   Continuation.t -> Continuation_extra_params_and_args.t -> t -> t
+
+(** Record that the current continuation handler contains cold code (a [@cold]
+    call or an inlined [Cold] marker), making it fully cold: in the backward
+    hot-path reachability it is never considered to reach a marker, so neither
+    it nor code that only leads to it is hot. *)
+val record_cold_cont : t -> t

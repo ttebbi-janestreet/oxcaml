@@ -566,6 +566,7 @@ and transl_exp0 ~in_new_scope ~scopes sort e =
       let ll =
         List.map (fun (e, sort) -> transl_exp ~scopes sort e) args_with_sorts
       in
+      let constructed =
       if cstr.cstr_inlined <> None then begin match ll with
         | [x] -> x
         | _ -> assert false
@@ -686,6 +687,20 @@ and transl_exp0 ~in_new_scope ~scopes sort e =
       | Extension _, (Variant_boxed _ | Variant_unboxed | Variant_with_null)
       | Ordinary _, Variant_extensible -> assert false
       end
+      in
+      (* A [@cold] constructor is cold on both sides: as well as marking match
+         branches that destructure it (see [Matching]), mark the construction
+         site cold so the code that builds the value is laid out cold. Skip pure
+         constants ([Lconst]) so we don't turn statically-allocated data into a
+         runtime computation. *)
+      if Builtin_attributes.has_cold_attribute cstr.cstr_attributes
+      then
+        (match constructed with
+         | Lconst _ -> constructed
+         | _ ->
+           Lsequence
+             (Lprim (Pcold, [], of_location ~scopes e.exp_loc), constructed))
+      else constructed
   | Texp_extension_constructor (_, path) ->
       transl_extension_path (of_location ~scopes e.exp_loc) e.exp_env path
   | Texp_variant(l, arg) ->

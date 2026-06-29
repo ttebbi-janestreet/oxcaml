@@ -35,6 +35,7 @@ let code loopify(never) size(67) newer_version_of(foobar_0)
       cont k2 (0i, 0, bar1)
     where k3 =
       let bar2 = closure bar2_1_1 @bar2 with { x_1 = x; z = z } in
+      let Pcold = %cold () in
       cont k2 (1i, bar2, 0)
     where k2 (tag : imm, unboxed_field_1_0, unboxed_field_0_0) =
       (switch tag

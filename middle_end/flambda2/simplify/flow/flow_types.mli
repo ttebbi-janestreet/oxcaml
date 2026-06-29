@@ -115,10 +115,15 @@ module Acc : sig
       extra : Continuation_extra_params_and_args.t Continuation.Map.t;
       lifted_constants : Lifted_constant_state.t;
       dummy_toplevel_cont : Continuation.t;
-      hot_marker_conts : float Continuation.Map.t
+      hot_marker_conts : float Continuation.Map.t;
           (** Continuations whose handler binds a [hot_path_to_here factor]
               marker, mapped to the (largest) such factor. These are the seeds
               for the hot-path reachability computed by the flow analysis. *)
+      cold_conts : Continuation.Set.t
+          (** Return continuations of [@cold] calls. They act as barriers in the
+              backward hot-path reachability: hotness does not propagate through
+              a cold continuation to its caller, so code that only leads to a
+              cold call stays cold. *)
     }
 
   val print : Format.formatter -> t -> unit

@@ -65,7 +65,8 @@ let analyze ?(speculative = false) ?print_name ~machine_width
              extra = _;
              lifted_constants = _;
              dummy_toplevel_cont;
-             hot_marker_conts
+             hot_marker_conts;
+             cold_conts
            } as t) =
         Flow_acc.normalize_acc ~specialization_map t
       in
@@ -148,17 +149,23 @@ let analyze ?(speculative = false) ?print_name ~machine_width
           | callers -> callers
         in
         (* Propagate each continuation's factor to its callers, keeping the
-           largest factor seen along the way. *)
+           largest factor seen along the way. A [cold_cont] (a continuation
+           containing a [@cold] call or an inlined [Cold] marker) is fully cold:
+           it is never added to the reachable set, so neither it nor any code
+           that only leads to it is considered hot. *)
         let add_callers reached =
           Continuation.Map.fold
             (fun k factor acc ->
               Continuation.Set.fold
                 (fun caller acc ->
-                  Continuation.Map.update caller
-                    (function
-                      | None -> Some factor
-                      | Some existing -> Some (Float.max existing factor))
-                    acc)
+                  if Continuation.Set.mem caller cold_conts
+                  then acc
+                  else
+                    Continuation.Map.update caller
+                      (function
+                        | None -> Some factor
+                        | Some existing -> Some (Float.max existing factor))
+                      acc)
                 (callers k) acc)
             reached reached
         in
@@ -168,7 +175,12 @@ let analyze ?(speculative = false) ?print_name ~machine_width
           then reached
           else saturate reached'
         in
-        saturate hot_marker_conts
+        let seeds =
+          Continuation.Map.filter
+            (fun k _ -> not (Continuation.Set.mem k cold_conts))
+            hot_marker_conts
+        in
+        saturate seeds
       in
       let result =
         T.Flow_result.

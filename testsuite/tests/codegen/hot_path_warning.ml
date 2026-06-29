@@ -249,10 +249,32 @@ let empty_marker_propagates () =
   not_inlinable () (* cold (beats hot) *);
   hot_path_to_here 10.
 
+(* A probe *before* an inlined marker is cold too: a continuation containing a
+   cold marker is fully cold, so hotness does not propagate back through it. *)
+let probe_before_marker () =
+  not_inlinable () (* cold (precedes a cold marker) *);
+  mark_cold ();
+  hot_path_to_here 10.
+
+(* The inlined-marker version of [merge_one_cold]: only the [then] path is cold
+   (it contains the marker), so the merge stays hot, but the [then] probe before
+   the marker is cold. *)
+let merge_one_cold_marker c =
+  (if c
+   then (
+     not_inlinable () (* cold (precedes a cold marker) *);
+     mark_cold ())
+   else not_inlinable () (* HOT (hot propagates to all predecessors) *));
+  not_inlinable () (* HOT (merge not all-cold) *);
+  hot_path_to_here 10.
+
 (* AND-merge: only the [then] path is cold, so the merge has a non-cold
    predecessor and is therefore not cold -- the probe stays hot. *)
 let merge_one_cold c =
-  (if c then cold_fn () else ());
+  (if c
+    then (not_inlinable () (* cold (cold stops hot from propagating) *);
+          cold_fn ())
+    else not_inlinable () (* HOT (hot propagates to all predecessors) *));
   not_inlinable () (* HOT (merge not all-cold) *);
   hot_path_to_here 10.
 

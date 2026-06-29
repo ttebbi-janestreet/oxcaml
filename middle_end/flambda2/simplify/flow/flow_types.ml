@@ -195,7 +195,8 @@ module Acc = struct
       extra : Continuation_extra_params_and_args.t Continuation.Map.t;
       lifted_constants : Lifted_constant_state.t;
       dummy_toplevel_cont : Continuation.t;
-      hot_marker_conts : float Continuation.Map.t
+      hot_marker_conts : float Continuation.Map.t;
+      cold_conts : Continuation.Set.t
     }
 
   let print_stack ppf stack =
@@ -211,7 +212,7 @@ module Acc = struct
 
   let [@ocamlformat "disable"] print ppf
       { stack; map; extra; lifted_constants; dummy_toplevel_cont = _;
-        hot_marker_conts = _ } =
+        hot_marker_conts = _; cold_conts = _ } =
     Format.fprintf ppf
       "@[<hov 1>(\
        @[<hov 1>(stack %a)@]@ \

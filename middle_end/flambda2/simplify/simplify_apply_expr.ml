@@ -374,6 +374,16 @@ let simplify_direct_full_application ~simplify_expr dacc apply function_type
        [rebuild_non_inlined_direct_full_application]). *)
     let apply_is_cold = DE.cold (DA.denv dacc) in
     let dacc = mark_cold dacc in
+    (* A non-inlined [@cold] call makes the current continuation fully cold in
+       the backward hot-path analysis, so code that only leads to this call (and
+       would otherwise reach a marker through it) is not treated as hot. The
+       forward direction (code after the call) is handled by [mark_cold]
+       above. *)
+    let dacc =
+      if callee_is_cold
+      then DA.map_flow_acc dacc ~f:Flow.Acc.record_cold_cont
+      else dacc
+    in
     let apply =
       let inlined : Inlined_attribute.t =
         if erase_attribute

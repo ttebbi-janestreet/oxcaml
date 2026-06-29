@@ -36,7 +36,8 @@ let empty () =
       extra = Continuation.Map.empty;
       lifted_constants = Lifted_constant_state.empty;
       dummy_toplevel_cont = wrong_dummy_toplevel_cont;
-      hot_marker_conts = Continuation.Map.empty
+      hot_marker_conts = Continuation.Map.empty;
+      cold_conts = Continuation.Set.empty
     }
   in
   res
@@ -119,6 +120,17 @@ let record_hot_marker (t : t) factor =
             | Some existing -> Some (Float.max existing factor))
           t.hot_marker_conts
     }
+
+(* Record that the current continuation handler contains cold code: a call to a
+   [@cold] function, or an inlined [Cold] marker. Such a continuation is fully
+   cold: in the backward hot-path reachability ([Flow_analysis]) it is never
+   considered to reach a [hot_path_to_here] marker, so neither it nor any code
+   that only leads to it is hot. *)
+let record_cold_cont (t : t) =
+  match t.stack with
+  | [] -> assert false
+  | elt :: _ ->
+    { t with cold_conts = Continuation.Set.add elt.continuation t.cold_conts }
 
 let record_defined_var var t =
   update_top_of_stack ~t ~f:(fun elt ->
@@ -376,6 +388,7 @@ let record_let_binding ~rewrite_id ~generate_phantom_lets ~let_bound
       let t =
         match[@ocaml.warning "-4"] original_prim with
         | Nullary (Hot_path factor) -> record_hot_marker t factor
+        | Nullary Cold -> record_cold_cont t
         | _ -> t
       in
       let bound_var = Bound_pattern.must_be_singleton let_bound in
