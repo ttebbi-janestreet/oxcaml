@@ -116,9 +116,13 @@ type t =
     mutable allowed_to_be_irreducible : bool;
         (* Whether rewrites are allowed to make the CFG irreducible (if the CFG
            is irreducible, the information about loops cannot be trusted). *)
-    mutable register_locations_are_set : bool
+    mutable register_locations_are_set : bool;
         (* Whether register allocation has set the locations of the `Reg.t`
            values. *)
+    mutable fun_text_section : string option
+        (** The text section to emit this function into, if it should not go
+            into the default one. Set by profile-guided function placement (see
+            [Cfg_fdo_layout]); [None] otherwise. *)
   }
 
 val create :

@@ -573,5 +573,6 @@ let run cfg_with_layout =
     fun_num_stack_slots;
     fun_frame_required;
     fun_prologue_required;
-    fun_section_name
+    fun_section_name;
+    fun_text_section = cfg.fun_text_section
   }

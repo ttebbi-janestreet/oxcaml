@@ -1498,7 +1498,8 @@ let prepare_fun_info t (cfg : Cfg.t) =
         next_instruction_id = _;
         fun_ret_type;
         allowed_to_be_irreducible = _;
-        register_locations_are_set = _
+        register_locations_are_set = _;
+        fun_text_section = _ (* the LLVM backend does not place functions *)
       } =
     cfg
   in

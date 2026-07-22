@@ -31,6 +31,7 @@ module type Oxcaml_options = sig
   val ddwarf_metrics : unit -> unit
   val ddwarf_metrics_output_file : string -> unit
   val dcfg : unit -> unit
+  val dfdo : unit -> unit
   val dcfg_invariants : unit -> unit
   val regalloc : Clflags.Register_allocator.t -> unit
   val regalloc_linscan_threshold : int -> unit
@@ -119,6 +120,7 @@ module type Oxcaml_options = sig
   val keep_llvmir : unit -> unit
   val llvm_path : string -> unit
   val llvm_flags : string -> unit
+  val fdo_profile : string -> unit
   val flambda2_debug : unit -> unit
   val no_flambda2_debug : unit -> unit
   val reaper_debug_flags : string -> unit

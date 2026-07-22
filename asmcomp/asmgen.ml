@@ -350,6 +350,20 @@ let reorder_blocks_random ppf_dump cl =
     pass_dump_cfg_if ppf_dump Oxcaml_flags.dump_cfg
       "After reorder_blocks_random" cl
 
+let reorder_blocks ppf_dump cl =
+  (* [-reorder-blocks-random] takes precedence over [-fdo-profile]: it is a
+     debugging aid, and must stay effective on builds that pass a profile. *)
+  match !Oxcaml_flags.reorder_blocks_random with
+  | Some _ -> reorder_blocks_random ppf_dump cl
+  | None -> (
+    match Oxcaml_flags.fdo_profile () with
+    | None -> cl
+    | Some profile ->
+      Cfg_fdo_layout.reorder_cold_blocks
+        ~dump:(if !Oxcaml_flags.dump_fdo then Some ppf_dump else None)
+        profile cl;
+      pass_dump_cfg_if ppf_dump Oxcaml_flags.dump_cfg "After cfg_fdo_layout" cl)
+
 let register_allocator_gi cfg_with_infos =
   cfg_with_infos_profile ~accumulate:true "cfg_gi" Regalloc_gi.run
     cfg_with_infos
@@ -472,7 +486,7 @@ let compile_cfg ppf_dump ~funcnames fd_cmm cfg_with_layout =
       Regalloc_utils.simplify_cfg cfg_with_layout)
   ++ cfg_with_layout_profile ~accumulate:true "save_cfg" save_cfg
   ++ cfg_with_layout_profile ~accumulate:true "cfg_reorder_blocks"
-       (reorder_blocks_random ppf_dump)
+       (reorder_blocks ppf_dump)
   ++ Profile.record ~accumulate:true "cfg_invariants" (cfg_invariants ppf_dump)
   ++ Profile.record ~accumulate:true "cfg_available_regs"
        (available_regs

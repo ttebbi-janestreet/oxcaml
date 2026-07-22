@@ -46,6 +46,11 @@ let mk_no_ocamlcfg f =
 
 let mk_dcfg f = ("-dcfg", Arg.Unit f, " (undocumented)")
 
+let mk_dfdo f =
+  ( "-dfdo",
+    Arg.Unit f,
+    " Dump the block frequencies used for profile-guided layout" )
+
 let mk_dcfg_invariants f =
   ("-dcfg-invariants", Arg.Unit f, " Extra sanity checks on Cfg")
 
@@ -539,6 +544,12 @@ let mk_llvm_flags f =
   ( "-llvm-flags",
     Arg.String f,
     " Extra flags to pass to LLVM (like -march or -mtune)" )
+
+let mk_fdo_profile f =
+  ( "-fdo-profile",
+    Arg.String f,
+    "<file>  Use the source-position FDO profile in <file> to guide code\n\
+    \     layout" )
 
 module Flambda2 = Oxcaml_flags.Flambda2
 
@@ -1312,6 +1323,7 @@ module type Oxcaml_options = sig
   val ddwarf_metrics : unit -> unit
   val ddwarf_metrics_output_file : string -> unit
   val dcfg : unit -> unit
+  val dfdo : unit -> unit
   val dcfg_invariants : unit -> unit
   val regalloc : Clflags.Register_allocator.t -> unit
   val regalloc_linscan_threshold : int -> unit
@@ -1400,6 +1412,7 @@ module type Oxcaml_options = sig
   val keep_llvmir : unit -> unit
   val llvm_path : string -> unit
   val llvm_flags : string -> unit
+  val fdo_profile : string -> unit
   val flambda2_debug : unit -> unit
   val no_flambda2_debug : unit -> unit
   val reaper_debug_flags : string -> unit
@@ -1503,6 +1516,7 @@ module Make_oxcaml_options (F : Oxcaml_options) = struct
       mk_ocamlcfg F.ocamlcfg;
       mk_no_ocamlcfg F.no_ocamlcfg;
       mk_dcfg F.dcfg;
+      mk_dfdo F.dfdo;
       mk_dcfg_invariants F.dcfg_invariants;
       mk_regalloc F.regalloc;
       mk_regalloc_linscan_threshold F.regalloc_linscan_threshold;
@@ -1597,6 +1611,7 @@ module Make_oxcaml_options (F : Oxcaml_options) = struct
       mk_keep_llvmir F.keep_llvmir;
       mk_llvm_path F.llvm_path;
       mk_llvm_flags F.llvm_flags;
+      mk_fdo_profile F.fdo_profile;
       mk_flambda2_debug F.flambda2_debug;
       mk_no_flambda2_debug F.no_flambda2_debug;
       mk_reaper_debug_flags F.reaper_debug_flags;
@@ -1838,6 +1853,7 @@ module Oxcaml_options_impl = struct
   let ocamlcfg () = ()
   let no_ocamlcfg () = ()
   let dcfg = set' Oxcaml_flags.dump_cfg
+  let dfdo = set' Oxcaml_flags.dump_fdo
   let dcfg_invariants = set' Oxcaml_flags.cfg_invariants
   let regalloc x = Oxcaml_flags.regalloc := x
 
@@ -2052,6 +2068,7 @@ module Oxcaml_options_impl = struct
   let keep_llvmir () = set' Oxcaml_flags.keep_llvmir ()
   let llvm_path s = Oxcaml_flags.llvm_path := Some s
   let llvm_flags s = Oxcaml_flags.llvm_flags := s
+  let fdo_profile s = Oxcaml_flags.fdo_profile_path := Some s
   let flambda2_debug = set' Oxcaml_flags.Flambda2.debug
   let no_flambda2_debug = clear' Oxcaml_flags.Flambda2.debug
 
@@ -2615,6 +2632,9 @@ module Extra_params = struct
         true
     | "keep-llvmir" -> set' Oxcaml_flags.keep_llvmir
     | "llvm-flags" -> set_string Oxcaml_flags.llvm_flags
+    | "fdo-profile" ->
+        Oxcaml_flags.fdo_profile_path := Some v;
+        true
     | "flambda2-debug" -> set' Oxcaml_flags.Flambda2.debug
     | "reaper-debug-flags" ->
         Oxcaml_flags.Flambda2.reaper_debug_flags :=

@@ -1,0 +1,3 @@
+# The call to [hot] in [f]. Marking it hot makes [f]'s other branch (the
+# call to [cold]) a known-cold block, which the FDO pass sinks to the end.
+100 hot_cold.ml:12:7

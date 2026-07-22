@@ -1,0 +1,70 @@
+; Round-trip tests for the source-position FDO profile format
+; ([Source_position_profile] in ocamlcommon).
+
+(executable
+ (name source_position_profile_test)
+ (modules source_position_profile_test)
+ (libraries ocamlcommon))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{context_name} "main"))
+ (action
+  (run ./source_position_profile_test.exe)))
+
+(executable
+ (name gen_profile)
+ (modules gen_profile)
+ (libraries ocamlcommon))
+
+(executable
+ (name fdo_decode_test)
+ (modules fdo_decode_test)
+ (libraries fdo_decode_lib))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{context_name} "main"))
+ (action
+  (run ./fdo_decode_test.exe)))
+
+; Deterministic test of -fdo-profile cold-block sinking: build a profile
+; that marks one branch of hot_cold.ml hot, compile with it, and check the
+; resulting block layouts.
+
+(executable
+ (name filter_fdo_dump)
+ (modules filter_fdo_dump))
+
+(rule
+ (targets hot_cold.fdo)
+ (deps hot_cold_profile.txt gen_profile.exe)
+ (enabled_if
+  (= %{context_name} "main"))
+ (action
+  (run ./gen_profile.exe hot_cold_profile.txt hot_cold.fdo)))
+
+(rule
+ (targets hot_cold.output.corrected)
+ (deps hot_cold.ml hot_cold.fdo filter_fdo_dump.exe)
+ (enabled_if
+  (= %{context_name} "main"))
+ (action
+  (progn
+   (with-outputs-to
+    hot_cold.output.raw
+    (run %{bin:ocamlopt.opt} -c -g -fdo-profile hot_cold.fdo -dcfg -dfdo -color
+      never hot_cold.ml))
+   (with-outputs-to
+    hot_cold.output.corrected
+    (run ./filter_fdo_dump.exe hot_cold.output.raw)))))
+
+(rule
+ (alias runtest)
+ (enabled_if
+  (= %{context_name} "main"))
+ (deps hot_cold.output hot_cold.output.corrected)
+ (action
+  (diff hot_cold.output hot_cold.output.corrected)))

@@ -28,6 +28,7 @@ let patchprof =                              (* -[no-]patchprof *)
 
 let patchprof_explicit = ref false
 let dump_cfg = ref false                (* -dcfg *)
+let dump_fdo = ref false                (* -dfdo *)
 let cfg_invariants = ref false          (* -dcfg-invariants *)
 let regalloc = ref Clflags.Register_allocator.Cfg (* -regalloc *)
 let default_regalloc_linscan_threshold = 100_000
@@ -203,6 +204,20 @@ let keep_llvmir = ref false (* -keep-llvmir *)
 let llvm_path = ref None (* -llvm-path *)
 
 let llvm_flags = ref "" (* -llvm-flags *)
+
+let fdo_profile_path = ref None (* -fdo-profile *)
+
+(* The profile is loaded once, on first use, from [fdo_profile_path] (which is
+   set during argument parsing, before this is forced). Held here so that any
+   compiler phase can consult it. Loading raises if the profile is malformed,
+   surfacing broken feedback-directed optimization loudly. *)
+let fdo_profile_lazy =
+  lazy
+    (Option.map
+       (fun filename -> Source_position_profile.load ~filename)
+       !fdo_profile_path)
+
+let fdo_profile () = Lazy.force fdo_profile_lazy
 
 module Flambda2 = struct
   let debug = ref false (* -flambda2-debug *)

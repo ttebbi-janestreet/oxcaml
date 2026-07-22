@@ -448,6 +448,20 @@ let emit_function_or_basic_block_section_name () =
   in
   emit_named_text_section !function_name ~suffix
 
+(* The text section chosen for the current function by profile-guided function
+   placement, if any. Unlike the sections above, this name is complete:
+   functions of the same hotness class share it. *)
+let current_text_section = ref None
+
+let emit_current_function_section () =
+  match !current_text_section with
+  | None -> emit_function_or_basic_block_section_name ()
+  | Some name ->
+    D.switch_to_section_raw ~names:[name] ~flags:(Some "ax") ~args:["@progbits"]
+      ~is_delayed:false;
+    (* See the warning in [emit_named_text_section]. *)
+    D.unsafe_set_internal_section_ref Text
+
 let emit_Llabel fallthrough lbl section_name =
   (if !Oxcaml_flags.basic_block_sections
    then
@@ -2790,7 +2804,8 @@ let fundecl fundecl =
   all_functions := fundecl :: !all_functions;
   current_basic_block_section
     := Option.value fundecl.fun_section_name ~default:"";
-  emit_function_or_basic_block_section_name ();
+  current_text_section := fundecl.fun_text_section;
+  emit_current_function_section ();
   D.align ~fill:Nop ~bytes:16;
   add_def_symbol fundecl.fun_name;
   let fundecl_sym = S.create_global fundecl.fun_name in

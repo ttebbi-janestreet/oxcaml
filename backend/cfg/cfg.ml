@@ -99,7 +99,8 @@ type t =
     next_instruction_id : InstructionId.sequence;
     fun_ret_type : Cmm.machtype;
     mutable allowed_to_be_irreducible : bool;
-    mutable register_locations_are_set : bool
+    mutable register_locations_are_set : bool;
+    mutable fun_text_section : string option
   }
 
 let create ~fun_name ~fun_args ~fun_codegen_options ~fun_dbg ~fun_contains_calls
@@ -119,7 +120,8 @@ let create ~fun_name ~fun_args ~fun_codegen_options ~fun_dbg ~fun_contains_calls
     next_instruction_id;
     fun_ret_type;
     allowed_to_be_irreducible;
-    register_locations_are_set = false
+    register_locations_are_set = false;
+    fun_text_section = None
   }
 
 let mem_block t label = Label.Tbl.mem t.blocks label

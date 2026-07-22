@@ -112,7 +112,13 @@ type fundecl =
     fun_num_stack_slots : int Stack_class.Tbl.t;
     fun_frame_required : bool;
     fun_prologue_required : bool;
-    fun_section_name : string option
+    fun_section_name : string option;
+        (** The basic-block section the function starts in, under
+            [-basic-block-sections]; a suffix of the per-function section name.
+        *)
+    fun_text_section : string option
+        (** The text section to emit this function into, if it should not go
+            into the default one. Set by profile-guided function placement. *)
   }
 
 val traps_to_bytes : int -> int

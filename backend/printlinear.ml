@@ -134,5 +134,10 @@ let fundecl ppf f =
     then ""
     else " " ^ Debuginfo.to_string f.fun_dbg
   in
-  fprintf ppf "@[<v 2>%s:%s%a@,%a@]" f.fun_name dbg section_name_to_string
-    f.fun_section_name all_instr f.fun_body
+  let text_section =
+    match f.fun_text_section with
+    | None -> ""
+    | Some name -> " in " ^ name ^ " text section"
+  in
+  fprintf ppf "@[<v 2>%s:%s%a%s@,%a@]" f.fun_name dbg section_name_to_string
+    f.fun_section_name text_section all_instr f.fun_body

@@ -24,6 +24,7 @@ val patchprof : bool ref
 val patchprof_explicit : bool ref
 
 val dump_cfg : bool ref
+val dump_fdo : bool ref
 val cfg_invariants : bool ref
 val regalloc : Clflags.Register_allocator.t ref
 val default_regalloc_linscan_threshold : int
@@ -150,6 +151,13 @@ val dump_llvmir : bool ref
 val keep_llvmir : bool ref
 val llvm_path : string option ref
 val llvm_flags : string ref
+
+val fdo_profile_path : string option ref
+
+(** The source-position FDO profile named by [-fdo-profile], loaded once on
+    first call (or [None] if the flag is unset). Raises
+    {!Source_position_profile.Error} if the profile is malformed. *)
+val fdo_profile : unit -> Source_position_profile.t option
 
 module Flambda2 : sig
   val debug : bool ref
