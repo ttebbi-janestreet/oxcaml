@@ -610,6 +610,7 @@
   probe_emission
   simd
   simd_selection
+  patchprof
   amd64_simd_defs
   amd64_simd_instrs
   stack_check

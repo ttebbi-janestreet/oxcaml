@@ -23,6 +23,7 @@
 
 #include <stdbool.h>
 #include "config.h"
+#include "platform.h"
 
 /* The compiler generates a "frame descriptor" for every potential
  * return address. Each loaded module has a block of memory, the
@@ -182,8 +183,16 @@ typedef struct caml_frametable_list {
   struct caml_frametable_list *next;
 } caml_frametable_list;
 
-/* a hashtable of frame descriptors */
-typedef struct caml_frame_descrs caml_frame_descrs;
+/* A hashtable of frame descriptors.  The table is mutated only while all
+   domains are stopped, so runtime code may perform lock-free lookups. */
+typedef struct caml_frame_descrs {
+  int num_descr;
+  int mask;
+  frame_descr **descriptors;
+  caml_frametable_list *frametables;
+  caml_frametable_list *zombies;
+  caml_plat_mutex mutex;
+} caml_frame_descrs;
 
 caml_frame_descrs* caml_get_frame_descrs(void);
 

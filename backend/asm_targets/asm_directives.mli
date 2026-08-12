@@ -290,6 +290,16 @@ val between_labels_64_bit :
     value. Supported only on the GAS text backend. *)
 val delta_uleb128 : upper:Asm_label.t -> lower:Asm_label.t -> unit
 
+(** Emit the packed flag-writer and conditional-branch lengths for one patchprof
+    site, together with the offset from the stack pointer to the return
+    address at the site, in 8-byte words ([0x7ff] meaning unknown). *)
+val patchprof_lengths :
+  site:Asm_label.t ->
+  jcc:Asm_label.t ->
+  fin:Asm_label.t ->
+  retaddr_words:int ->
+  unit
+
 (** Like [between_symbols], but for two labels with additional offsets, emitting
     a 64-bit-wide reference. The labels must be in the same section. *)
 val between_labels_64_bit_with_offsets :
@@ -483,6 +493,16 @@ module Directive : sig
         }
     | Delta_uleb128 of { delta : Constant.t }
         (** Variable-width return-address delta for a short frame descriptor *)
+    | Patchprof_lengths of
+        { site : Asm_label.t;
+          jcc : Asm_label.t;
+          fin : Asm_label.t;
+          retaddr_words : int
+        }
+        (** The packed instruction lengths and return-address offset for one
+            patchprof site. *)
+
+  val new_label : Asm_label.t -> t
 
   (** Translate the given directive to textual form. This produces output
       suitable for either gas or MASM as appropriate. *)

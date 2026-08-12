@@ -79,9 +79,21 @@ typedef cpuset_t cpu_set_t;
 #include "caml/signals.h"
 #include "caml/startup.h"
 #include "caml/startup_aux.h"
+#include "caml/patchprof.h"
 #include "caml/sync.h"
 #include "caml/weak.h"
 #include "sync_posix.h"
+
+#if defined(NATIVE_CODE) && defined(TARGET_amd64) && defined(SYS_linux)
+extern int caml_patchprof_stub_arena_present;
+extern void caml_patchprof_init_domain(caml_domain_state *);
+extern void caml_patchprof_dump_domain(caml_domain_state *);
+
+static int caml_patchprof_is_linked(void)
+{
+  return caml_patchprof_stub_arena_present;
+}
+#endif
 
 /* Check that the domain_state structure was laid out without padding,
    since the runtime assumes this in computing offsets */
@@ -693,8 +705,13 @@ static void domain_create(uintnat initial_minor_heap_wsize,
   bool fresh_state = d->state == NULL;
   if (fresh_state) {
     /* FIXME: Never freed. Not clear when to. */
+    size_t domain_state_size = sizeof(caml_domain_state);
+#if defined(NATIVE_CODE) && defined(TARGET_amd64) && defined(SYS_linux)
+    if (caml_patchprof_is_linked())
+      domain_state_size += CAML_PATCHPROF_COUNTER_BYTES;
+#endif
     domain_state = (caml_domain_state*)
-      caml_stat_calloc_noexc(1, sizeof(caml_domain_state));
+      caml_stat_calloc_noexc(1, domain_state_size);
     if (domain_state == NULL)
       goto fail_domain;
 
@@ -722,6 +739,10 @@ static void domain_create(uintnat initial_minor_heap_wsize,
    * domain_terminate). */
 
   caml_domain_lock_hook();
+
+#if defined(NATIVE_CODE) && defined(TARGET_amd64) && defined(SYS_linux)
+  if (caml_patchprof_is_linked()) caml_patchprof_init_domain(domain_state);
+#endif
 
   domain_state->young_limit = 0;
   domain_state->unique_id = d->unique_id;
@@ -2647,6 +2668,9 @@ void caml_domain_terminate(bool last)
      termination hooks. No OCaml code can run on this domain after
      this. */
   caml_domain_stop_hook();
+#if defined(NATIVE_CODE) && defined(TARGET_amd64) && defined(SYS_linux)
+  caml_patchprof_dump_domain(domain_state);
+#endif
   call_timing_hook(&caml_domain_terminated_hook);
 
   /* Reset the tick interval back to 0, since we no longer want ticks */

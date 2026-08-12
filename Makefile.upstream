@@ -1232,8 +1232,36 @@ libasmrund_OBJECTS = \
 libasmruni_OBJECTS = \
   $(runtime_NATIVE_C_SOURCES:.c=.ni.$(O)) $(runtime_ASM_OBJECTS:.$(O)=.i.$(O))
 
+ifeq "$(ARCH)-$(SYSTEM)" "amd64-linux"
+libasmrun_OBJECTS += \
+  runtime/patchprof.n.$(O) runtime/patchprof_sample.n.$(O) \
+  runtime/patchprof_stub_arena.$(O)
+libasmrund_OBJECTS += \
+  runtime/patchprof.nd.$(O) runtime/patchprof_sample.nd.$(O) \
+  runtime/patchprof_stub_arena.d.$(O)
+libasmruni_OBJECTS += \
+  runtime/patchprof.ni.$(O) runtime/patchprof_sample.ni.$(O) \
+  runtime/patchprof_stub_arena.i.$(O)
+
+# [caml_patchprof_sample] is entered from patched code with all OCaml
+# registers live; -mgeneral-regs-only (with the no_caller_saved_registers
+# attribute) makes it preserve every register it touches.  __NO_INLINE__
+# keeps glibc's extern-inline floating-point functions (e.g. atof) out of
+# the translation unit, since they cannot compile without SSE.
+runtime/patchprof_sample.n.$(O) runtime/patchprof_sample.nd.$(O) \
+runtime/patchprof_sample.ni.$(O) runtime/patchprof_sample.npic.$(O): \
+  OC_CFLAGS += -mgeneral-regs-only
+runtime/patchprof_sample.n.$(O) runtime/patchprof_sample.nd.$(O) \
+runtime/patchprof_sample.ni.$(O) runtime/patchprof_sample.npic.$(O): \
+  OC_CPPFLAGS += -D__NO_INLINE__
+endif
+
 libasmrunpic_OBJECTS = $(runtime_NATIVE_C_SOURCES:.c=.npic.$(O)) \
   $(runtime_ASM_OBJECTS:.$(O)=_libasmrunpic.$(O))
+ifeq "$(ARCH)-$(SYSTEM)" "amd64-linux"
+libasmrunpic_OBJECTS += runtime/patchprof.npic.$(O) \
+  runtime/patchprof_sample.npic.$(O)
+endif
 
 libcomprmarsh_OBJECTS = runtime/zstd.npic.$(O)
 

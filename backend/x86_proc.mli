@@ -77,6 +77,22 @@ val current_output_pos : unit -> output_pos
 
 val output_range : from_pos:output_pos -> to_pos:output_pos -> asm_line list
 
+(** Label adjacent instruction pairs in the given output range. The second
+    instruction must be a conditional branch. Labels are inserted after peephole
+    optimization, so they cannot inhibit an optimization. The final component
+    of each result is the byte offset from the stack pointer to the return
+    address at that site (a multiple of 8), recovered from the CFI directives,
+    or [None] if it could not be tracked. *)
+val label_instruction_pairs :
+  from_pos:output_pos ->
+  to_pos:output_pos ->
+  is_first:(instruction -> bool) ->
+  (Asm_targets.Asm_label.t
+  * Asm_targets.Asm_label.t
+  * Asm_targets.Asm_label.t
+  * int option)
+  list
+
 val peephole_optimize_from : output_pos -> unit
 
 (** Code emission *)

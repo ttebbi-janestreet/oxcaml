@@ -48,6 +48,9 @@ extern char caml_system__code_begin, caml_system__code_end;
 /* The two symbols above are defined in runtime/$ARCH.S. */
 
 extern uintnat caml_prelinking_in_use;
+#if defined(TARGET_amd64) && defined(SYS_linux)
+extern void caml_patchprof_init(void);
+#endif
 
 /* Initialize the static data and code area limits. */
 
@@ -149,6 +152,9 @@ value caml_startup_common(char_os **argv, int pooling)
     exe_name = caml_search_exe_in_path(exe_name);
   caml_sys_init(exe_name, argv);
   caml_maybe_expand_stack();
+#if defined(TARGET_amd64) && defined(SYS_linux)
+  caml_patchprof_init();
+#endif
   res = caml_start_program(Caml_state);
   /* ignore distinction between async and normal,
      it's an uncaught exception either way */

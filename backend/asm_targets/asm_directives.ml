@@ -284,7 +284,15 @@ module Directive = struct
           addend : int64
         }
     | Delta_uleb128 of { delta : Constant.t }
+    | Patchprof_lengths of
+        { site : Asm_label.t;
+          jcc : Asm_label.t;
+          fin : Asm_label.t;
+          retaddr_words : int
+        }
   (* A constant (typically a label difference) emitted as ULEB128 *)
+
+  let new_label label = New_label (Label label, Code)
 
   let bprintf = Printf.bprintf
 
@@ -435,6 +443,12 @@ module Directive = struct
         bprintf buf "\t.set %s, (%a)\n\t.uleb128 %s" temp Constant.print delta
           temp
       | _ -> bprintf buf "\t.uleb128 (%a)" Constant.print delta)
+    | Patchprof_lengths { site; jcc; fin; retaddr_words } ->
+      let site = Asm_label.encode site in
+      let jcc = Asm_label.encode jcc in
+      let fin = Asm_label.encode fin in
+      bprintf buf "\t.word (%s - %s) | ((((%s - %s) - 2) / 4) << 4) | (%d << 5)"
+        jcc site fin jcc retaddr_words
     | Global sym -> bprintf buf "\t.globl\t%s" (Asm_symbol.encode sym)
     | New_label (Label lbl, _typ) -> bprintf buf "%s:" (Asm_label.encode lbl)
     | New_label (Symbol sym, _typ) -> bprintf buf "%s:" (Asm_symbol.encode sym)
@@ -598,6 +612,7 @@ module Directive = struct
     (* The only supported "type" on EXTRN declarations is NEAR. *)
     | Reloc _ -> unsupported "Reloc"
     | Delta_uleb128 _ -> unsupported "Delta_uleb128"
+    | Patchprof_lengths _ -> unsupported "Patchprof_lengths"
 
   let print b t =
     match TS.assembler () with
@@ -695,6 +710,7 @@ module Directive = struct
          [Arm64_binary_emitter.Binary_emitter.iter]). *)
       Misc.fatal_error
         "increment_offset_in_bytes: Delta_uleb128 is not supported"
+    | Patchprof_lengths _ -> offset_in_bytes + 2
     (* Directives that don't contribute to section size *)
     | Cfi_adjust_cfa_offset _ | Cfi_def_cfa_offset _ | Cfi_endproc
     | Cfi_offset _ | Cfi_startproc | Cfi_remember_state | Cfi_restore_state
@@ -1164,6 +1180,13 @@ let delta_uleb128 ~upper ~lower =
       (Directive.Constant.Label upper, Directive.Constant.Label lower)
   in
   emit (Delta_uleb128 { delta })
+
+let patchprof_lengths ~site ~jcc ~fin ~retaddr_words =
+  if retaddr_words < 0 || retaddr_words > 0x7ff
+  then
+    Misc.fatal_errorf "patchprof_lengths: retaddr_words %d out of range"
+      retaddr_words;
+  emit (Patchprof_lengths { site; jcc; fin; retaddr_words })
 
 let between_labels_64_bit_with_offsets ?comment:_comment ~upper ~upper_offset
     ~lower ~lower_offset () =

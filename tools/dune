@@ -173,3 +173,8 @@
   (ocamlfilt.exe as ocamlfilt))
  (section bin)
  (package ocaml))
+
+(executable
+ (name patchprof_summary)
+ (modes native)
+ (modules patchprof_summary))

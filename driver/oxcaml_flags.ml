@@ -13,6 +13,17 @@
 (*   special exception on linking described in the file LICENSE.          *)
 (*                                                                        *)
 (**************************************************************************)
+(* Patchprof instrumentation is on by default wherever it is supported; the
+   runtime only activates it when [OCAML_PATCHPROF_OUT] is set.  A defaulted
+   flag yields silently to incompatible options (see [Patchprof.enabled] and
+   [Asmlink]); an explicit [-patchprof] turns those conflicts into errors. *)
+let patchprof =                              (* -[no-]patchprof *)
+  ref
+    (String.equal Config.architecture "amd64"
+    && String.equal Config.system "linux"
+    && Config.asm_cfi_supported)
+
+let patchprof_explicit = ref false
 let dump_cfg = ref false                (* -dcfg *)
 let cfg_invariants = ref false          (* -dcfg-invariants *)
 let regalloc = ref Clflags.Register_allocator.Cfg (* -regalloc *)

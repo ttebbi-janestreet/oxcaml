@@ -680,6 +680,9 @@ let run ~read_anonymous_arg ~extra_args ~extra_init toplevel =
   extra_init ();
   (* Early disabling of colors in any output *)
   let () =
+    (* Assembly expectations must not contain patchprof instrumentation
+       labels; the flag is otherwise enabled by default. *)
+    Oxcaml_flags.patchprof := false;
     Clflags.color := Some Misc.Color.Never;
     Misc.Style.(setup @@ Some Never)
   in

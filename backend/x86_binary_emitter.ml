@@ -1506,6 +1506,17 @@ let assemble_instr b loc = function
   | XOR (src, dst) -> emit_XOR b dst src
   | SIMD (instr, args) -> emit_simd b instr args
 
+let instruction_length instruction =
+  let sec_name = Section_name.make [".text.patchprof_length"] (Some "ax") [] in
+  let sec = { sec_name; sec_instrs = [||] } in
+  let b = new_buffer sec in
+  assemble_instr b (ref 0) instruction;
+  (match b.relocations, b.patches with
+  | [], [] -> ()
+  | _ :: _, _ | _, _ :: _ ->
+    Misc.fatal_error
+      "x86_binary_emitter: symbolic operand in instruction_length");
+  Buffer.length b.buf
 
 let[@warning "+4"] constant b cst
       (width : D.Constant_with_width.Width_in_bytes.t) =
@@ -1677,6 +1688,35 @@ let assemble_line b loc ins =
       | C.Signed_int _ | C.Unsigned_int _ | C.This | C.Label _ | C.Symbol _
       | C.Variable _ | C.Add _ | C.Sub _ ->
           Misc.fatal_error "x86_binary_emitter: malformed Delta_uleb128")
+    | Directive (D.Patchprof_lengths { site; jcc; fin; retaddr_words }) ->
+      let resolve label =
+        let name = Asm_label.encode label in
+        match String.Tbl.find cross_section_labels name with
+        | section, position -> section, position
+        | exception Not_found ->
+          Misc.fatal_errorf "patchprof: undefined label %s" name
+      in
+      let site_section, site_pos = resolve site in
+      let jcc_section, jcc_pos = resolve jcc in
+      let fin_section, fin_pos = resolve fin in
+      if
+        not
+          (Section_name.equal site_section jcc_section
+          && Section_name.equal site_section fin_section)
+      then Misc.fatal_error "patchprof: one site spans multiple sections";
+      let fw_len = jcc_pos - site_pos in
+      let jcc_len = fin_pos - jcc_pos in
+      if fw_len < 3 || fw_len > 0xf || (jcc_len <> 2 && jcc_len <> 6)
+      then Misc.fatal_error "patchprof: invalid instruction lengths";
+      if retaddr_words < 0 || retaddr_words > 0x7ff
+      then Misc.fatal_error "patchprof: invalid return-address offset";
+      let packed =
+        fw_len
+        lor (if jcc_len = 6 then 0x10 else 0)
+        lor (retaddr_words lsl 5)
+      in
+      buf_int8 b (packed land 0xff);
+      buf_int8 b (packed lsr 8)
     | Directive
         (D.Reloc
           { name = D.R_X86_64_PLT32;

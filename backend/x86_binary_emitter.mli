@@ -59,6 +59,11 @@ val relocations : buffer -> Relocation.t list
 
 val assemble_section : arch -> section -> buffer
 
+(** Return the encoded length of an instruction that has no symbolic operands.
+    In particular, this is suitable for [CMP] and [TEST] instructions selected
+    as patchprof sites. *)
+val instruction_length : instruction -> int
+
 (** Forget label positions recorded by previous [assemble_section] calls.
     Call once per program, before assembling its first section. *)
 val clear_cross_section_labels : unit -> unit

@@ -43,6 +43,12 @@
 #include "caml/startup_aux.h"
 #include "caml/weak.h"
 
+#if defined(NATIVE_CODE) && defined(TARGET_amd64) && defined(SYS_linux)
+extern int caml_patchprof_rotation_enabled(void);
+extern void caml_patchprof_rotate_from_stw(int participating_count,
+                                           caml_domain_state **participating);
+#endif
+
 struct generic_table CAML_TABLE_STRUCT(char);
 
 CAMLexport atomic_uintnat caml_minor_collections_count;
@@ -1060,6 +1066,18 @@ caml_stw_empty_minor_heap_no_major_slice(caml_domain_state* domain,
   CAMLassert(domain->young_ptr == domain->young_end);
   CAML_GC_MESSAGE(MINOR, "Minor collection done.\n");
   Caml_state->in_minor_collection = 0;
+
+#if defined(NATIVE_CODE) && defined(TARGET_amd64) && defined(SYS_linux)
+  /* Rotating patchprof's instrumented window needs every domain stopped
+     while the text is rewritten; this stop-the-world section is already
+     paying for that.  The barrier holds all domains until the final one
+     has finished the rotation (or decided none is due). */
+  if (caml_patchprof_rotation_enabled()) {
+    Caml_global_barrier_if_final(participating_count) {
+      caml_patchprof_rotate_from_stw(participating_count, participating);
+    }
+  }
+#endif
 }
 
 static void caml_stw_empty_minor_heap (caml_domain_state* domain,

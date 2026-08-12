@@ -115,6 +115,7 @@
   (stack.h as caml/stack.h)
   (startup_aux.h as caml/startup_aux.h)
   (startup.h as caml/startup.h)
+  (patchprof.h as caml/patchprof.h)
   (sync.h as caml/sync.h)
   (sys.h as caml/sys.h)
   (simd.h as caml/simd.h)

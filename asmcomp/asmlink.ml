@@ -309,6 +309,59 @@ let call_linker ?dissector_args file_list_rev startup_file output_name =
     then Ccomp.Partial
     else Ccomp.Exe
   in
+  (* The default-enabled flag yields silently to links that patchprof does
+     not support; an explicit [-patchprof] turns them into errors. *)
+  let patchprof_link_problem () =
+    if mode <> Ccomp.Exe
+    then Some "-patchprof only supports executable links"
+    else if !Clflags.llvm_backend
+    then Some "-patchprof does not yet support the LLVM backend"
+    else if
+      not
+        (String.equal Config.architecture "amd64"
+        && String.equal Config.system "linux")
+    then Some "-patchprof is only supported on Linux/amd64"
+    else
+      (* The stub arena object is only part of the static runtime archives
+         (libasmrun, libasmrund, libasmruni), so other runtime variants such
+         as [_pic] would fail with an undefined reference to
+         [caml_patchprof_stub_arena_force_link]. Reject them up front. *)
+      match !Clflags.runtime_variant with
+      | "" | "nnp" | "d" | "i" -> None
+      | variant ->
+        Some
+          (Printf.sprintf "-patchprof does not support -runtime-variant %s"
+             variant)
+  in
+  let patchprof_linker_script =
+    if not !Oxcaml_flags.patchprof
+    then None
+    else
+      match patchprof_link_problem () with
+      | Some problem ->
+        if !Oxcaml_flags.patchprof_explicit then Misc.fatal_error problem;
+        None
+      | None ->
+        let filename = Filename.temp_file "patchprof" ".ld" in
+        let channel = open_out_bin filename in
+        Fun.protect
+          ~finally:(fun () -> close_out_noerr channel)
+          (fun () ->
+            output_string channel
+              "SECTIONS\n\
+               {\n\
+              \  patchprof_sites 0 :\n\
+              \  {\n\
+              \    KEEP(*(patchprof_sites))\n\
+              \  }\n\
+               }\n\
+               INSERT AFTER .comment;\n");
+        Clflags.all_ccopts
+          := ("-Wl,-T," ^ Filename.quote filename)
+             :: "-Wl,-u,caml_patchprof_stub_arena_force_link"
+             :: !Clflags.all_ccopts;
+        Some filename
+  in
   (* Determine if we need to use a temporary file for objcopy workflow *)
   (* We disable the objcopy workflow if the output is piped to /dev/null. *)
   let needs_objcopy_workflow =
@@ -324,8 +377,11 @@ let call_linker ?dissector_args file_list_rev startup_file output_name =
     else output_name
   in
   let exitcode =
-    Profile.record_call "link_object" (fun () ->
-        Ccomp.call_linker mode link_output_name files c_lib)
+    Fun.protect
+      ~finally:(fun () -> Option.iter Misc.remove_file patchprof_linker_script)
+      (fun () ->
+        Profile.record_call "link_object" (fun () ->
+            Ccomp.call_linker mode link_output_name files c_lib))
   in
   if not (exitcode = 0)
   then (

@@ -96,6 +96,7 @@ let iter emitter ~all_sections ~on_insn ~on_directive =
             | Some value -> offset_in_bytes + D.Directive.uleb128_size value
             | None ->
               Misc.fatal_error "Delta_uleb128: cannot resolve label difference")
+          | Patchprof_lengths _ -> offset_in_bytes + 2
           | _ -> D.Directive.increment_offset_in_bytes d ~offset_in_bytes
         in
         Section_state.set_offset_in_bytes !current_state new_offset)
@@ -125,7 +126,8 @@ let compute_label_offsets emitter ~all_sections =
       | Cfi_restore_state | Cfi_def_cfa_register _ | Comment _ | Const _
       | File _ | Indirect_symbol _ | Loc _ | New_line | Private_extern _
       | Section _ | Size _ | Sleb128 _ | Space _ | Type _ | Uleb128 _
-      | Protected _ | Hidden _ | External _ | Reloc _ | Delta_uleb128 _ ->
+      | Protected _ | Hidden _ | External _ | Reloc _ | Delta_uleb128 _
+      | Patchprof_lengths _ ->
         ())
 
 (* Second pass: emit machine code and data *)

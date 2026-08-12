@@ -2689,6 +2689,25 @@ let emit_function_type_and_size fun_sym =
 
 (* Emission of a function declaration *)
 
+let patchprof_arg_can_be_cloned = function
+  | X86_ast.Imm _ | X86_ast.Reg8L _ | X86_ast.Reg8H _ | X86_ast.Reg16 _
+  | X86_ast.Reg32 _ | X86_ast.Reg64 _ | X86_ast.Regf _
+  | X86_ast.Mem { sym = None; _ } ->
+    true
+  | X86_ast.Sym _ | X86_ast.Mem { sym = Some _; _ } | X86_ast.Mem64_RIP _ ->
+    false
+
+let is_patchprof_flag_writer instruction =
+  let eligible_arguments arg1 arg2 =
+    patchprof_arg_can_be_cloned arg1 && patchprof_arg_can_be_cloned arg2
+  in
+  match[@warning "-4"] instruction with
+  | (X86_ast.CMP (arg1, arg2) | X86_ast.TEST (arg1, arg2))
+    when eligible_arguments arg1 arg2 ->
+    let length = X86_binary_emitter.instruction_length instruction in
+    length >= 3 && length <= 15
+  | X86_ast.CMP _ | X86_ast.TEST _ | _ -> false
+
 let fundecl fundecl =
   let fun_end_label, fundecl =
     match Emitaux.Dwarf_helpers.record_dwarf_for_fundecl fundecl with
@@ -2743,6 +2762,13 @@ let fundecl fundecl =
   emit_all ~first:true ~fallthrough:true fundecl.fun_body;
   X86_proc.peephole_optimize_from fun_body_start;
   let fun_body_end = current_output_pos () in
+  if Patchprof.enabled ()
+  then
+    X86_proc.label_instruction_pairs ~from_pos:fun_body_start
+      ~to_pos:fun_body_end ~is_first:is_patchprof_flag_writer
+    |> List.iter (fun (site, jcc, fin, retaddr_offset) ->
+        Patchprof.record ~section:!current_basic_block_section ~site ~jcc ~fin
+          ~retaddr_offset);
   List.iter emit_call_gc !call_gc_sites;
   List.iter emit_local_realloc !local_realloc_sites;
   let gc_jump_pads_end = current_output_pos () in
@@ -2792,6 +2818,7 @@ let data l =
 
 let reset_all () =
   X86_proc.reset_asm_code ();
+  Patchprof.reset ();
   Emitaux.reset ();
   reset_debug_info ();
   (* PR#5603 *)
@@ -3190,6 +3217,7 @@ let end_assembly () =
   D.size frametable_sym;
   D.data ();
   Probe_emission.emit_probe_notes ~add_def_symbol;
+  Patchprof.emit_section ();
   emit_trap_notes ();
   D.mark_stack_non_executable ();
   (* Note that [mark_stack_non_executable] switches the section on Linux. *)

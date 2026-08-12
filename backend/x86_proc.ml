@@ -408,6 +408,91 @@ let next_pos pos =
 let output_range ~from_pos ~to_pos =
   DLL.range_to_list ~left_incl:(next_pos from_pos) ~right_excl:(next_pos to_pos)
 
+let label_instruction_pairs ~from_pos ~to_pos ~is_first =
+  let stop = next_pos to_pos in
+  let is_stop cell =
+    match cell, stop with
+    | None, None -> true
+    | Some cell, Some stop -> cell == stop
+    | None, Some _ | Some _, None -> false
+  in
+  let new_label () =
+    Asm_targets.Asm_label.create Asm_targets.Asm_section.Text
+  in
+  let label_line label =
+    Directive (Asm_targets.Asm_directives.Directive.new_label label)
+  in
+  (* Track the CFA offset from the CFI directives, which mirror the emitter's
+     own stack bookkeeping exactly (including the directive-only adjustment
+     after path-local epilogues and the remember/restore pair around
+     stack-switching C calls).  At any point, the return address of the
+     current frame lives at [rsp + cfa - 8]. *)
+  let cfa = ref (Some 8) in
+  let saved_cfa = ref [] in
+  let track line =
+    let module Dir = Asm_targets.Asm_directives.Directive in
+    match[@warning "-4"] line with
+    | Directive (Dir.Cfi_def_cfa_offset bytes) -> cfa := Some bytes
+    | Directive (Dir.Cfi_adjust_cfa_offset bytes) ->
+      cfa := Option.map (fun offset -> offset + bytes) !cfa
+    | Directive (Dir.Cfi_def_cfa_register _) -> cfa := None
+    | Directive Dir.Cfi_remember_state -> saved_cfa := !cfa :: !saved_cfa
+    | Directive Dir.Cfi_restore_state -> (
+      match !saved_cfa with
+      | restored :: rest ->
+        cfa := restored;
+        saved_cfa := rest
+      | [] -> cfa := None)
+    | Ins _ | Directive _ -> ()
+  in
+  let site_retaddr_offset () =
+    match !cfa with
+    | None -> None
+    | Some cfa ->
+      let offset = cfa - 8 in
+      if offset < 0 || offset land 7 <> 0
+      then
+        Misc.fatal_errorf
+          "patchprof: return-address offset %d is negative or not a multiple \
+           of 8"
+          offset;
+      Some offset
+  in
+  let rec loop cell sites =
+    if is_stop cell
+    then List.rev sites
+    else
+      match cell with
+      | None -> List.rev sites
+      | Some first_cell -> (
+        track (DLL.value first_cell);
+        let second = DLL.next first_cell in
+        let found =
+          match DLL.value first_cell, second with
+          | Ins first, Some second_cell
+            when (not (is_stop second)) && is_first first -> (
+            match[@warning "-4"] DLL.value second_cell with
+            | Ins (J _) -> Some second_cell
+            | Ins _ | Directive _ -> None)
+          | Ins _, (None | Some _) | Directive _, _ -> None
+        in
+        match found with
+        | None -> loop second sites
+        | Some second_cell ->
+          let next = DLL.next second_cell in
+          let first_label = new_label () in
+          let second_label = new_label () in
+          let end_label = new_label () in
+          DLL.insert_before first_cell (label_line first_label);
+          DLL.insert_before second_cell (label_line second_label);
+          DLL.insert_after second_cell (label_line end_label);
+          let site =
+            first_label, second_label, end_label, site_retaddr_offset ()
+          in
+          loop next (site :: sites))
+  in
+  loop (next_pos from_pos) []
+
 let peephole_optimize_from pos =
   if !Oxcaml_flags.x86_peephole_optimize
   then

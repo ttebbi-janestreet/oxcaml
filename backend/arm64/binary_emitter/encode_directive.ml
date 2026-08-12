@@ -595,6 +595,8 @@ let emit_directive state ~current_section ~all_sections
     match eval_constant state ~all_sections delta with
     | Some value -> D.Directive.emit_uleb128 buf value
     | None -> Misc.fatal_error "Delta_uleb128: cannot resolve label difference")
+  | Patchprof_lengths _ ->
+    Misc.fatal_error "Patchprof_lengths is only supported on amd64"
   (* Directives that don't emit data *)
   | Cfi_adjust_cfa_offset _ | Cfi_def_cfa_offset _ | Cfi_endproc | Cfi_offset _
   | Cfi_startproc | Cfi_remember_state | Cfi_restore_state

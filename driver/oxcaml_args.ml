@@ -487,6 +487,15 @@ let mk_ddissector_inputs f =
     Arg.String f,
     "<file>  Write dissector input analysis to <file>" )
 
+let mk_patchprof f =
+  ( "-patchprof",
+    Arg.Unit f,
+    " Emit Patchprof metadata and reserve its stub arena (default on \
+     Linux/amd64)" )
+
+let mk_no_patchprof f =
+  ("-no-patchprof", Arg.Unit f, " Do not emit Patchprof metadata")
+
 let mk_verify_binary_emitter f =
   ( "-verify-binary-emitter",
     Arg.Unit f,
@@ -1369,6 +1378,9 @@ module type Oxcaml_options = sig
   val dbranch_relaxation_max_displacement : int -> unit
   val caml_apply_inline_fast_path : unit -> unit
   val internal_assembler : unit -> unit
+  val patchprof : unit -> unit
+
+  val no_patchprof : unit -> unit
   val verify_binary_emitter : unit -> unit
   val dissector : unit -> unit
   val dissector_partition_size : float -> unit
@@ -1562,6 +1574,8 @@ module Make_oxcaml_options (F : Oxcaml_options) = struct
         F.dbranch_relaxation_max_displacement;
       mk_caml_apply_inline_fast_path F.caml_apply_inline_fast_path;
       mk_internal_assembler F.internal_assembler;
+      mk_patchprof F.patchprof;
+      mk_no_patchprof F.no_patchprof;
       mk_verify_binary_emitter F.verify_binary_emitter;
       mk_dissector F.dissector;
       mk_dissector_partition_size F.dissector_partition_size;
@@ -1998,6 +2012,22 @@ module Oxcaml_options_impl = struct
     set' Oxcaml_flags.caml_apply_inline_fast_path
 
   let internal_assembler = set' Oxcaml_flags.internal_assembler
+
+  let patchprof () =
+    if
+      not
+        (String.equal Config.architecture "amd64"
+        && String.equal Config.system "linux")
+    then Misc.fatal_error "-patchprof is only supported on Linux/amd64";
+    (* The return-address offsets in the patchprof metadata are recovered
+       from the CFI directives. *)
+    if not Config.asm_cfi_supported
+    then Misc.fatal_error "-patchprof requires CFI directive support";
+    Oxcaml_flags.patchprof := true;
+    Oxcaml_flags.patchprof_explicit := true
+
+  let no_patchprof () = Oxcaml_flags.patchprof := false
+
   let verify_binary_emitter = set' Oxcaml_flags.verify_binary_emitter
   let dissector = set' Clflags.dissector
   let dissector_partition_size = set_dissector_partition_size
@@ -2418,6 +2448,10 @@ module Extra_params = struct
     in
     match name with
     | "internal-assembler" -> set' Oxcaml_flags.internal_assembler
+    | "patchprof" ->
+        if Compenv.check_bool ppf name v then Oxcaml_options_impl.patchprof ()
+        else Oxcaml_flags.patchprof := false;
+        true
     | "verify-binary-emitter" -> set' Oxcaml_flags.verify_binary_emitter
     | "dgc-timings" -> set' Oxcaml_flags.gc_timings
     | "no-mach-ir" ->

@@ -27,14 +27,6 @@
 #include "caml/backtrace_prim.h"
 #include <stddef.h>
 
-struct caml_frame_descrs {
-  int num_descr;
-  int mask;
-  frame_descr** descriptors;
-  caml_frametable_list *frametables;
-  caml_frametable_list *zombies;
-  caml_plat_mutex mutex;
-};
 /* Let us call 'capacity' the length of the descriptors array.
 
    We maintain the following invariants:

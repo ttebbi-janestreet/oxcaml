@@ -16,6 +16,13 @@
 
 (** OxCaml specific command line flags *)
 
+val patchprof : bool ref
+
+(** Whether [-patchprof] was requested explicitly, which turns conflicts with
+    incompatible options into errors instead of silently disabling the
+    defaulted instrumentation. *)
+val patchprof_explicit : bool ref
+
 val dump_cfg : bool ref
 val cfg_invariants : bool ref
 val regalloc : Clflags.Register_allocator.t ref
