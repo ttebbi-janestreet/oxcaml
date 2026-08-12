@@ -301,6 +301,7 @@ static uint64_t monotonic_ns(void)
   return (uint64_t)now.tv_sec * 1000000000ull + (uint64_t)now.tv_nsec;
 }
 
+
 static int read_site_stride(uint32_t *stride)
 {
   const char *text =
@@ -1087,6 +1088,7 @@ void caml_patchprof_init_domain(caml_domain_state *state)
   domain->last_walk_length = 0;
   domain->walk_log_used = CAML_PATCHPROF_WALK_CHUNK_HEADER_WORDS;
   domain->walks_dropped = 0;
+  domain->window_start_ns = monotonic_ns();
 }
 
 /* Flush the domain's pending walk chunk from a normal (non-slow-stub)
@@ -1123,9 +1125,9 @@ void caml_patchprof_dump_domain(caml_domain_state *state)
   const uint64_t *slow_path_entries = domain->slow_path_entries;
 
   uint64_t *payload =
-    malloc((2 + 5 * (size_t)num_sites) * sizeof(uint64_t));
+    malloc((3 + 5 * (size_t)num_sites) * sizeof(uint64_t));
   if (payload == NULL) return;
-  size_t words = 2;
+  size_t words = 3;
   uint64_t emitted = 0;
   for (uint32_t i = 0; i < num_sites; i++) {
     /* [total] exceeds its initial value by the sampling periods reloaded so
@@ -1146,6 +1148,7 @@ void caml_patchprof_dump_domain(caml_domain_state *state)
   }
   payload[0] = (uint64_t)state->id;
   payload[1] = emitted;
+  payload[2] = monotonic_ns() - domain->window_start_ns;
   int write_result = write_record(CAML_PATCHPROF_RECORD_COUNTERS,
                                   payload, words);
   free(payload);
@@ -1202,16 +1205,20 @@ static int write_record(uint64_t kind, const uint64_t *payload, size_t words)
    startup and again at each window rotation. */
 static int emit_selection_record(void)
 {
-  uint64_t payload[7] = {
+  struct timespec wall;
+  clock_gettime(CLOCK_REALTIME, &wall);
+  uint64_t payload[9] = {
     selection_seed,
     selection_stride,
     initial_countdown,
     selection_num_unique,
     selection_window_start,
     selection_residue,
-    num_sites
+    num_sites,
+    monotonic_ns(),
+    (uint64_t)wall.tv_sec * 1000000000ull + (uint64_t)wall.tv_nsec
   };
-  return write_record(CAML_PATCHPROF_RECORD_SELECTION, payload, 7);
+  return write_record(CAML_PATCHPROF_RECORD_SELECTION, payload, 9);
 }
 
 void caml_patchprof_init(void)

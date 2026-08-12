@@ -62,12 +62,14 @@ enum caml_patchprof_slot {
 
 enum caml_patchprof_record {
   /* seed, stride, initial_countdown, num_unique_sites, window_start,
-     residue, num_selected_sites */
+     residue, num_selected_sites, install monotonic ns, install realtime
+     ns */
   CAML_PATCHPROF_RECORD_SELECTION = 1,
   /* domain_id, then walk records: weight, frame count in the low half and
      site index in the high half, then one word per frame address */
   CAML_PATCHPROF_RECORD_WALKS = 2,
-  /* domain_id, num_sites, then per site: address, executions,
+  /* domain_id, num_sites, active ns (wall-clock time this domain spent
+     observing the current window), then per site: address, executions,
      slow_path_entries, sampled_weight, tally */
   CAML_PATCHPROF_RECORD_COUNTERS = 3,
   /* domain_id, walks_attempted, walks_failed, walk_frames_total,
@@ -104,6 +106,8 @@ struct caml_patchprof_domain {
   const struct caml_patchprof_site *sites;
   caml_frame_descrs *frame_descrs;
   uintptr_t load_bias;       /* subtracted from logged frame addresses */
+  uint64_t window_start_ns;  /* when this domain started observing the
+                                current window (monotonic) */
   uint64_t walks_attempted;
   uint64_t walks_failed;     /* no valid frame beyond the site itself */
   uint64_t walk_frames_total;

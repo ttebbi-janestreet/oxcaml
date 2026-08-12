@@ -71,7 +71,7 @@ let add_to table key amount =
    the producer dying mid-write ends the stream. *)
 let profile_magic = 0x000a31464f525050L (* "PPROF1\n" *)
 
-let parse_profile path walks statistics selections executions =
+let parse_profile path walks statistics selections executions exposures =
   let contents = In_channel.with_open_bin path In_channel.input_all in
   let num_words = String.length contents / 8 in
   let word i = String.get_int64_le contents (8 * i) in
@@ -112,11 +112,14 @@ let parse_profile path walks statistics selections executions =
              cursor := !cursor + 2 + depth
            end
          done
-       | 3 (* counter batch: domain id, count, 5 words per site *) ->
-         let count = if length >= 2 then int (payload + 1) else 0 in
-         for site = 0 to min count ((length - 2) / 5) - 1 do
-           let base = payload + 2 + (5 * site) in
-           add_to executions (word base) (int (base + 1))
+       | 3 (* counter batch: domain id, count, active ns, then 5 words
+              per site *) ->
+         let count = if length >= 3 then int (payload + 1) else 0 in
+         let active_ns = if length >= 3 then int (payload + 2) else 0 in
+         for site = 0 to min count ((length - 3) / 5) - 1 do
+           let base = payload + 3 + (5 * site) in
+           add_to executions (word base) (int (base + 1));
+           add_to exposures (word base) active_ns
          done
        | 4 (* domain statistics *) when length >= 5 ->
          statistics.attempted <- statistics.attempted + int (payload + 1);
@@ -371,22 +374,45 @@ let () =
   in
   let selections = Hashtbl.create 256 in
   let executions = Hashtbl.create 65536 in
+  let exposures = Hashtbl.create 65536 in
   List.iter
-    (fun path -> parse_profile path walks statistics selections executions)
+    (fun path ->
+       parse_profile path walks statistics selections executions exposures)
     !profiles;
   if !walks = [] then begin
     prerr_endline "no walk records found; was the profile produced with \
                    walk logging enabled?";
     exit 1
   end;
-  (* Scale every site's walks so that the site's trie mass equals its exact
-     fast-path execution count. *)
+  (* Scale every site's walks so that the site's trie mass equals its
+     execution *rate*: exact fast-path executions divided by the wall-clock
+     time its windows were installed.  Counts alone would overweight sites
+     whose windows happened to be instrumented longer or more often, e.g.
+     under rotation. *)
   let site_walk_weight = Hashtbl.create 65536 in
   List.iter
     (fun walk -> add_to site_walk_weight walk.frames.(0) walk.weight)
     !walks;
+  let rate address =
+    match Hashtbl.find_opt executions address with
+    | None -> None
+    | Some count ->
+      let exposure =
+        max 1 (Option.value ~default:0 (Hashtbl.find_opt exposures address))
+      in
+      Some (1e9 *. float_of_int count /. float_of_int exposure)
+  in
   let total_executions =
     Hashtbl.fold (fun _address count acc -> acc + count) executions 0
+  in
+  let total_exposure =
+    Hashtbl.fold (fun _address ns acc -> acc + ns) exposures 0
+  in
+  let total_rate =
+    Hashtbl.fold
+      (fun address _ acc ->
+         acc +. Option.value ~default:0. (rate address))
+      executions 0.
   in
   let addresses = Hashtbl.create 65536 in
   List.iter
@@ -406,18 +432,14 @@ let () =
     (fun walk ->
        let site = walk.frames.(0) in
        let mass =
-         match
-           Hashtbl.find_opt executions site,
-           Hashtbl.find_opt site_walk_weight site
-         with
-         | Some site_executions, Some site_weight when site_weight > 0 ->
-           float_of_int walk.weight
-           *. float_of_int site_executions /. float_of_int site_weight
-         | _ -> float_of_int walk.weight
+         match rate site, Hashtbl.find_opt site_walk_weight site with
+         | Some site_rate, Some site_weight when site_weight > 0 ->
+           float_of_int walk.weight *. site_rate /. float_of_int site_weight
+         | _ -> 0.
        in
        insert root symbols walk mass)
     !walks;
-  let total = float_of_int total_executions in
+  let total = total_rate in
   Printf.printf
     "%d profile(s), %d selection records, %d walks (%d attempted, \
      %d failed, %d dropped), %d distinct addresses\n"
@@ -426,11 +448,15 @@ let () =
     statistics.dropped (Hashtbl.length addresses);
   report_coverage selections;
   Printf.printf
-    "total fast-path executions of instrumented sites: %d; walks cover \
-     %.1f%% of that mass (the rest executed too rarely to be sampled)\n\
-     bottom-up trie (indentation = callers), percent of total executions, \
-     pruned below %.2f%%:\n\n"
-    total_executions (100. *. root.mass /. total) !min_percent;
+    "total fast-path executions of instrumented sites: %d over %.2f \
+     site-seconds of window exposure\n\
+     percentages are shares of the exposure-normalized execution rate; \
+     walks cover %.1f%% of it (the rest executed too rarely to be \
+     sampled)\n\
+     bottom-up trie (indentation = callers), pruned below %.2f%%:\n\n"
+    total_executions
+    (float_of_int total_exposure /. 1e9)
+    (100. *. root.mass /. total) !min_percent;
   List.iter
     (fun (name, child) -> print_node ~depth:0 ~total name child)
     (sorted_children root)
