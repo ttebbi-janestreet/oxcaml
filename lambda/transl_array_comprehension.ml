@@ -257,7 +257,11 @@ end = struct
        don't have to bind them first to avoid extra computation. *)
     Let_binding.let_one product
       (Lifthenelse
-         (product.var / y = x, product.var, raise_overflow_exn ~loc, layout_int))
+         ( product.var / y = x,
+           product.var,
+           raise_overflow_exn ~loc,
+           loc,
+           layout_int ))
 
   (** [safe_product_pos_vals ~loc xs] generates the lambda expression that
       computes the product of all the lambda values in [xs] assuming they are
@@ -392,6 +396,7 @@ module Iterator_bindings = struct
              ( range_size.var > l0,
                range_size.var,
                Precompute_array_size.raise_overflow_exn ~loc,
+               loc,
                layout_int ))
       | Array { iter_arr = _; iter_len } -> iter_len.var
 
@@ -576,6 +581,7 @@ let clause ~transl_exp ~scopes ~loc = function
         ( transl_exp ~scopes Lambda.layout_bool cond,
           body,
           lambda_unit,
+          loc,
           layout_unit )
 
 (** The [array_sizing] type describes whether an array comprehension has been
@@ -838,6 +844,7 @@ let body ~loc ~array_kind ~array_size ~array_sizing ~array ~index ~body =
               Lsequence
                 ( Lassign (array_size.id, i 2 * array_size.var),
                   Lassign (array.id, Resizable_array.double ~loc array.var) ),
+              loc,
               layout_unit ),
           (* ...and then set the element now that the array is big enough *)
           set_element_raw elt )
@@ -860,6 +867,7 @@ let body ~loc ~array_kind ~array_size ~array_sizing ~array ~index ~body =
            ( is_first_iteration,
              Lassign (array.id, make_array),
              set_element_in_bounds elt.var,
+             loc,
              layout_unit ))
     | Pintarray | Paddrarray | Pgcignorableaddrarray | Pfloatarray
     | Punboxedfloatarray (Unboxed_float64 | Unboxed_float32)
@@ -946,6 +954,7 @@ let comprehension ~transl_exp ~scopes ~loc ~(array_kind : Lambda.array_kind)
            Lprim (Pmakearray (Pgenarray, Immutable, Lambda.alloc_heap), [], loc),
            (* Otherwise, we translate it normally *)
            comprehension,
+           loc,
            (* (And the result has the [value_kind] of the array) *)
            layout_array array_kind ))
   | Dynamic_size_info -> comprehension

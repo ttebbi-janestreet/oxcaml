@@ -29,6 +29,7 @@ let executable = ref ""
 let min_percent = ref 1.0
 let max_depth = ref 6
 let profiles = ref []
+let dump_provenance = ref false
 
 let options =
   [ "-exe", Arg.Set_string executable,
@@ -38,7 +39,9 @@ let options =
       "P do not print nodes below this share of the total (default %.1f)"
       !min_percent;
     "-max-depth", Arg.Set_int max_depth,
-    Printf.sprintf "N caller depth to print (default %d)" !max_depth ]
+    Printf.sprintf "N caller depth to print (default %d)" !max_depth;
+    "-dump-provenance", Arg.Set dump_provenance,
+    " dump the executable's patchprof_provenance section and exit" ]
 
 type walk =
   { weight : int;
@@ -362,8 +365,118 @@ let report_coverage selections =
          (100. *. float_of_int !covered_sites /. float_of_int num_unique))
     groups
 
+(* Dumping of the [patchprof_provenance] section: branch provenance
+   metadata, one record per patchprof site in site order.  See
+   [backend/patchprof.ml] for the format. *)
+
+let read_whole_file path =
+  let ic = open_in_bin path in
+  let contents = really_input_string ic (in_channel_length ic) in
+  close_in ic;
+  contents
+
+(* Minimal ELF64 little-endian section lookup: offset and size of the named
+   section, if present. *)
+let find_elf_section data name =
+  let u16 off = Char.code data.[off] lor (Char.code data.[off + 1] lsl 8) in
+  let u32 off = u16 off lor (u16 (off + 2) lsl 16) in
+  let u64 off = u32 off lor (u32 (off + 4) lsl 32) in
+  if String.length data < 64 || not (String.sub data 0 4 = "\x7fELF")
+  then failwith "not an ELF file";
+  let section_headers = u64 0x28 in
+  let entry_size = u16 0x3a in
+  let count = u16 0x3c in
+  let names_index = u16 0x3e in
+  let field index off = section_headers + (index * entry_size) + off in
+  let names = u64 (field names_index 0x18) in
+  let section_name index =
+    let start = names + u32 (field index 0) in
+    String.sub data start (String.index_from data start '\000' - start)
+  in
+  let rec find index =
+    if index >= count
+    then None
+    else if String.equal (section_name index) name
+    then Some (u64 (field index 0x18), u64 (field index 0x20))
+    else find (index + 1)
+  in
+  find 0
+
+let dump_provenance_section exe =
+  let data = read_whole_file exe in
+  match find_elf_section data "patchprof_labels" with
+  | None ->
+    prerr_endline "no patchprof_labels section";
+    exit 1
+  | Some (offset, size) ->
+    let pos = ref offset in
+    let stop = offset + size in
+    let byte () =
+      let b = Char.code data.[!pos] in
+      incr pos;
+      b
+    in
+    let rec uleb shift acc =
+      let b = byte () in
+      let acc = acc lor ((b land 0x7f) lsl shift) in
+      if b land 0x80 = 0 then acc else uleb (shift + 7) acc
+    in
+    let uleb () = uleb 0 0 in
+    let u64 () =
+      let v = String.get_int64_le data !pos in
+      pos := !pos + 8;
+      v
+    in
+    while !pos < stop do
+      if not (String.equal (String.sub data !pos 4) "PPLB")
+      then failwith "bad label section magic";
+      pos := !pos + 4;
+      let version = uleb () in
+      Printf.printf "unit: version %d\n" version;
+      let labels = Hashtbl.create 16 in
+      let num_labels = ref 0 in
+      let continue = ref true in
+      while !continue && !pos < stop do
+        if String.length data - !pos >= 4
+           && String.equal (String.sub data !pos 4) "PPLB"
+        then continue := false
+        else
+          match uleb () with
+          | 1 ->
+            let nframes = uleb () in
+            let hashes = List.init nframes (fun _ -> u64 ()) in
+            let disc = uleb () in
+            let edge = uleb () in
+            incr num_labels;
+            Hashtbl.add labels !num_labels (hashes, disc, edge)
+          | 0 ->
+            let addr = u64 () in
+            let set () =
+              let n = uleb () in
+              List.init n (fun _ ->
+                  let hashes, disc, edge = Hashtbl.find labels (uleb ()) in
+                  Printf.sprintf "%d.%d@%016Lx/%d" disc edge
+                    (List.hd hashes) (List.length hashes))
+            in
+            let taken = set () in
+            let fallthrough = set () in
+            Printf.printf "site %Lx: taken=[%s] fallthrough=[%s]\n" addr
+              (String.concat " " taken)
+              (String.concat " " fallthrough)
+          | tag -> failwith (Printf.sprintf "bad label item tag %d" tag)
+      done
+    done
+
 let () =
   Arg.parse options (fun profile -> profiles := profile :: !profiles) usage;
+  if !dump_provenance then begin
+    if !executable = "" then begin
+      Arg.usage options usage;
+      exit 2
+    end;
+    dump_provenance_section !executable;
+    exit 0
+  end;
   if !executable = "" || !profiles = [] then begin
     Arg.usage options usage;
     exit 2

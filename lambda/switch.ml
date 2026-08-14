@@ -130,7 +130,7 @@ sig
   val make_is_nonzero : loc -> arg -> test
   val arg_as_test : arg -> test
 
-  val make_if : layout -> test -> act -> act -> act
+  val make_if : layout -> loc -> test -> act -> act -> act
   val make_switch : loc -> layout -> arg -> int array -> act array -> act
 
   val make_catch : layout -> act -> Static_label.t * (act -> act)
@@ -671,7 +671,7 @@ let rec pkey chan  = function
   type 'a t_ctx =  {off : int ; arg : 'a; loc : Arg.loc}
 
   let make_if_test kind loc test arg i ifso ifnot =
-    Arg.make_if kind
+    Arg.make_if kind loc
       (Arg.make_prim loc test [arg ; Arg.make_const loc i])
       ifso ifnot
 
@@ -694,13 +694,13 @@ let rec pkey chan  = function
     make_if_test kind loc Arg.neint arg i ifso ifnot
 
   let make_if_nonzero kind loc arg ifso ifnot =
-    Arg.make_if kind (Arg.make_is_nonzero loc arg) ifso ifnot
+    Arg.make_if kind loc (Arg.make_is_nonzero loc arg) ifso ifnot
 
-  let make_if_bool kind arg ifso ifnot =
-    Arg.make_if kind (Arg.arg_as_test arg) ifso ifnot
+  let make_if_bool kind loc arg ifso ifnot =
+    Arg.make_if kind loc (Arg.arg_as_test arg) ifso ifnot
 
   let do_make_if_out kind loc h arg ifso ifno =
-    Arg.make_if kind (Arg.make_isout loc h arg) ifso ifno
+    Arg.make_if kind loc (Arg.make_isout loc h arg) ifso ifno
 
   let make_if_out kind ctx l d mk_ifso mk_ifno = match l with
     | 0 ->
@@ -715,7 +715,7 @@ let rec pkey chan  = function
                (Arg.make_const ctx.loc d) arg (mk_ifso ctx) (mk_ifno ctx))
 
   let do_make_if_in kind loc h arg ifso ifno =
-    Arg.make_if kind (Arg.make_isin loc h arg) ifso ifno
+    Arg.make_if kind loc (Arg.make_isin loc h arg) ifso ifno
 
   let make_if_in kind ctx l d mk_ifso mk_ifno = match l with
     | 0 ->
@@ -795,7 +795,7 @@ let rec pkey chan  = function
           if i=1 && (lim+ctx.off)=1 && get_low cases 0+ctx.off=0 then
             if lcases = 2 && get_high cases 1+ctx.off = 1 then
               make_if_bool
-                kind
+                kind ctx.loc
                 ctx.arg
                 (c_test kind ctx right) (c_test kind ctx left)
             else

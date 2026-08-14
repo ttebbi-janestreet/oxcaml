@@ -462,6 +462,58 @@ let int_test_of_integer_comparison :
   in
   { lt; eq; gt; is_signed; imm }
 
+(* Mirrors the successor distributions of [float_test_of_float_comparison],
+   [int_test_of_integer_comparison] and [terminator_of_test]: given branch
+   provenance whose masks describe the [ifso] and [ifnot] successors of a
+   two-way conditional, produce the provenance whose masks describe the
+   successor positions of the terminator built for [test].  [None] when the
+   debug info carries no provenance.  Must be kept in sync with the
+   functions above and below. *)
+let edge_labels_dbg_of_test (test : Operation.test) dbg : Debuginfo.t option =
+  match Debuginfo.edge_labels dbg with
+  | None | Some (Debuginfo.Resolved _) -> None
+  | Some (Debuginfo.Positional sets) ->
+    let sets =
+      match sets with
+      | [| ifso; ifnot |] -> (
+        match test with
+        | Itruetest -> [| ifso; ifnot |]
+        | Ifalsetest -> [| ifnot; ifso |]
+        | Iinttest comparison | Iinttest_imm (comparison, _) ->
+          let lt, eq, gt =
+            match comparison with
+            | Ceq -> ifnot, ifso, ifnot
+            | Cne -> ifso, ifnot, ifso
+            | Clt | Cult -> ifso, ifnot, ifnot
+            | Cgt | Cugt -> ifnot, ifnot, ifso
+            | Cle | Cule -> ifso, ifso, ifnot
+            | Cge | Cuge -> ifnot, ifso, ifso
+          in
+          [| lt; eq; gt |]
+        | Ifloattest (_, comparison) ->
+          let lt, eq, gt, uo =
+            match comparison with
+            | CFeq -> ifnot, ifso, ifnot, ifnot
+            | CFneq -> ifso, ifnot, ifso, ifso
+            | CFlt -> ifso, ifnot, ifnot, ifnot
+            | CFnlt -> ifnot, ifso, ifso, ifso
+            | CFgt -> ifnot, ifnot, ifso, ifnot
+            | CFngt -> ifso, ifso, ifnot, ifso
+            | CFle -> ifso, ifso, ifnot, ifnot
+            | CFnle -> ifnot, ifnot, ifso, ifso
+            | CFge -> ifnot, ifso, ifso, ifnot
+            | CFnge -> ifso, ifnot, ifnot, ifso
+          in
+          [| lt; eq; gt; uo |]
+        | Ioddtest -> [| ifnot; ifso |]
+        | Ieventest -> [| ifso; ifnot |])
+      | _ ->
+        (* Not a two-way conditional (e.g. a many-armed switch): the label
+           sets cannot be distributed here. *)
+        [||]
+    in
+    Some (Debuginfo.with_edge_labels dbg (Debuginfo.Positional sets))
+
 let terminator_of_test :
     Operation.test ->
     label_false:Label.t ->

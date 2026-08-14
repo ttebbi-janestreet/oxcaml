@@ -1129,11 +1129,13 @@ and transl_exp0 ~in_new_scope ~scopes (layout : Lambda.layout) e =
       Lifthenelse(transl_exp ~scopes Lambda.layout_bool cond,
                   event_before ~scopes ifso (transl_exp ~scopes layout ifso),
                   event_before ~scopes ifnot (transl_exp ~scopes layout ifnot),
+                  of_location ~scopes cond.exp_loc,
                   layout)
   | Texp_ifthenelse(cond, ifso, None) ->
       Lifthenelse(transl_exp ~scopes Lambda.layout_bool cond,
                   event_before ~scopes ifso (transl_exp ~scopes layout ifso),
                   lambda_unit,
+                  of_location ~scopes cond.exp_loc,
                   Lambda.layout_unit)
   | Texp_sequence(expr1, sort', expr2) ->
       let sort' = Jkind.Sort.default_for_transl_and_get sort' in
@@ -1292,6 +1294,7 @@ and transl_exp0 ~in_new_scope ~scopes (layout : Lambda.layout) e =
           (transl_exp ~scopes Lambda.layout_bool cond,
            lambda_unit,
            assert_failed loc ~scopes e,
+           of_location ~scopes cond.exp_loc,
            Lambda.layout_unit)
       end
   | Texp_lazy e ->
@@ -1520,6 +1523,7 @@ and transl_exp0 ~in_new_scope ~scopes (layout : Lambda.layout) e =
                (* probe handler has type [unit] *)
                Lapply (app ~ap_probe:None),
                lambda_unit,
+               ap_loc,
                layout_unit ))
       in
       Llet(Strict, Lambda.layout_function, funcid, funcid_duid, handler, lam)
@@ -1595,7 +1599,8 @@ and transl_guard ~scopes guard rhs_layout rhs =
   | Some cond ->
       event_before ~scopes cond
         (Lifthenelse(transl_exp ~scopes Lambda.layout_bool cond,
-                     expr, staticfail, layout))
+                     expr, staticfail,
+                     of_location ~scopes cond.exp_loc, layout))
 
 and transl_cont cont c_cont body =
   match cont, c_cont with

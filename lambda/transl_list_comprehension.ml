@@ -309,6 +309,7 @@ let rec translate_clauses ~transl_exp ~scopes ~loc ~comprehension_body
         ( transl_exp ~scopes Lambda.layout_bool cond,
           body ~accumulator,
           accumulator,
+          loc,
           layout_any_value (* [list]s have the standard representation *) ))
   | [] -> comprehension_body ~accumulator
 

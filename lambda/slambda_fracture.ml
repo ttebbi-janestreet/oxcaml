@@ -233,14 +233,14 @@ let rec fracture_lam lambda : slambda =
       (if fbody == body && fhandler == handler
        then lambda
        else Ltrywith (fbody, exn, duid, fhandler, kind))
-  | Lifthenelse (cond, ifso, ifnot, kind) ->
+  | Lifthenelse (cond, ifso, ifnot, loc, kind) ->
     let fcond = fracture_dynamic cond in
     let fifso = fracture_dynamic ifso in
     let fifnot = fracture_dynamic ifnot in
     create_dynamic
       (if fcond == cond && fifso == ifso && fifnot == ifnot
        then lambda
-       else Lifthenelse (fcond, fifso, fifnot, kind))
+       else Lifthenelse (fcond, fifso, fifnot, loc, kind))
   | Lsequence (left, right) ->
     (* {[
          let left = <fracture left> in

@@ -277,11 +277,11 @@ and eval_lam_shallow env lam =
     if new_layout == old_layout
     then lam
     else Ltrywith (body, id, debug_uid, handler_body, new_layout)
-  | Lifthenelse (cond, iftrue, iffalse, old_layout) ->
+  | Lifthenelse (cond, iftrue, iffalse, loc, old_layout) ->
     let new_layout = eval_layout env old_layout in
     if new_layout == old_layout
     then lam
-    else Lifthenelse (cond, iftrue, iffalse, new_layout)
+    else Lifthenelse (cond, iftrue, iffalse, loc, new_layout)
   | Lsend (kind, met, obj, args, region_close, mode, loc, old_layout, yielding)
     ->
     let new_layout = eval_layout env old_layout in
@@ -586,7 +586,7 @@ let rec assert_no_splices (lam : Lambda.lambda) =
       bindings;
     assert_layout_contains_no_splices layout
   | Ltrywith (_, _, _, _, layout) -> assert_layout_contains_no_splices layout
-  | Lifthenelse (_, _, _, layout) -> assert_layout_contains_no_splices layout
+  | Lifthenelse (_, _, _, _, layout) -> assert_layout_contains_no_splices layout
   | Lsequence _ | Lwhile _ | Lfor _ | Lassign _ -> ()
   | Lsend (_, _, _, _, _, _, _, layout, _) ->
     assert_layout_contains_no_splices layout

@@ -66,8 +66,25 @@ let cfg_value_propagation_flow = ref false
                                         (* -[no]-cfg-value-propagation-flow *)
 let reorder_blocks_random = ref None    (* -reorder-blocks-random seed *)
 let basic_block_sections = ref false    (* -basic-block-sections *)
+let branch_provenance = ref false       (* -gbranch-provenance *)
 (* -module-entry-functions-section *)
 let module_entry_functions_section = ref false
+
+(* The patchprof metadata records one address delta per site within a text
+   section, so sections that the linker may reorder are unsupported.  The
+   default-enabled flag yields to them silently; an explicit [-patchprof]
+   must error. *)
+let patchprof_enabled () =
+  !patchprof
+  &&
+  let incompatible_sections =
+    !Clflags.function_sections
+    || !basic_block_sections
+    || !module_entry_functions_section
+  in
+  if incompatible_sections && !patchprof_explicit
+  then Misc.fatal_error "-patchprof does not yet support function sections";
+  not incompatible_sections
 
 let dasm_comments = ref false (* -dasm-comments *)
 

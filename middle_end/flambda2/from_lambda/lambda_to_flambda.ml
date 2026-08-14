@@ -1026,8 +1026,14 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
                       (Some (IR.Pop { exn_handler = handler_continuation }))
                       (get_unarized_vars body_result env)))
               ~handler:(handler k)))
-  | Lifthenelse (cond, ifso, ifnot, kind) ->
-    let loc = L.try_to_find_location cond in
+  | Lifthenelse (cond, ifso, ifnot, loc, kind) ->
+    (* The condition's own location is more precise when it has one; the
+       conditional's location covers e.g. a bare-variable condition. *)
+    let loc =
+      match[@warning "-4"] L.try_to_find_location cond with
+      | Debuginfo.Scoped_location.Loc_unknown -> loc
+      | cond_loc -> cond_loc
+    in
     let lam =
       Lambda_to_lambda_transforms.switch_for_if_then_else ~loc ~cond ~ifso
         ~ifnot ~kind

@@ -238,6 +238,12 @@ let mk_reorder_blocks_random f =
       "<seed> Randomly reorder basic blocks in every function, using the \
        provided seed (intended for testing, off by default)." )
 
+let mk_branch_provenance f =
+  ( "-gbranch-provenance",
+    Arg.Unit f,
+    " Emit DWARF line-table discriminators that attribute conditional\n\
+    \     branches to the source-level conditionals they came from" )
+
 let mk_basic_block_sections f =
   if Config.function_sections then
     ( "-basic-block-sections",
@@ -1350,6 +1356,7 @@ module type Oxcaml_options = sig
   val experimental_optimizations : unit -> unit
   val reorder_blocks_random : int -> unit
   val basic_block_sections : unit -> unit
+  val branch_provenance : unit -> unit
   val module_entry_functions_section : unit -> unit
   val dasm_comments : unit -> unit
   val dno_asm_comments : unit -> unit
@@ -1544,6 +1551,7 @@ module Make_oxcaml_options (F : Oxcaml_options) = struct
       mk_experimental_optimizations F.experimental_optimizations;
       mk_reorder_blocks_random F.reorder_blocks_random;
       mk_basic_block_sections F.basic_block_sections;
+      mk_branch_provenance F.branch_provenance;
       mk_module_entry_functions_section F.module_entry_functions_section;
       mk_dasm_comments F.dasm_comments;
       mk_dno_asm_comments F.dno_asm_comments;
@@ -1920,6 +1928,7 @@ module Oxcaml_options_impl = struct
     Oxcaml_flags.reorder_blocks_random := Some seed
 
   let basic_block_sections () = set' Oxcaml_flags.basic_block_sections ()
+  let branch_provenance () = set' Oxcaml_flags.branch_provenance ()
 
   let module_entry_functions_section () =
     set' Oxcaml_flags.module_entry_functions_section ()
@@ -2517,6 +2526,7 @@ module Extra_params = struct
     | "reorder-blocks-random" ->
         set_int_option' Oxcaml_flags.reorder_blocks_random
     | "basic-block-sections" -> set' Oxcaml_flags.basic_block_sections
+    | "gbranch-provenance" -> set' Oxcaml_flags.branch_provenance
     | "module-entry-functions-section" ->
         set' Oxcaml_flags.module_entry_functions_section
     | "heap-reduction-threshold" ->

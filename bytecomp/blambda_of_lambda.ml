@@ -344,7 +344,7 @@ let rec comp_expr (exp : Lambda.lambda) : Blambda.blambda =
   | Ltrywith (body, param, _param_duid, handler, _kind) ->
     (* We are intentionally dropping the [debug_uid] identifiers here. *)
     Trywith { body = comp_expr body; param; handler = comp_expr handler }
-  | Lifthenelse (cond, ifso, ifnot, _kind) ->
+  | Lifthenelse (cond, ifso, ifnot, _loc, _kind) ->
     Ifthenelse
       { cond = comp_expr cond; ifso = comp_expr ifso; ifnot = comp_expr ifnot }
   | Lsequence (exp1, exp2) -> Sequence (comp_expr exp1, comp_expr exp2)

@@ -30,6 +30,28 @@ module C = Cfg
 module Dll = Doubly_linked_list
 
 (* Convert simple [Switch] to branches. *)
+
+(* When the switch carries pseudo-instrumentation labels (one set per
+   scrutinee value, like its label array), move them onto the successors of
+   the int test replacing it: each successor covers a run of values and
+   carries the union of their label sets. *)
+let switch_edge_labels (block : C.basic_block) ~len ~runs =
+  match Debuginfo.edge_labels block.terminator.dbg with
+  | None | Some (Debuginfo.Resolved _) -> block.terminator.dbg
+  | Some (Debuginfo.Positional sets) ->
+    if Array.length sets <> len
+    then block.terminator.dbg
+    else
+      let run (lo, hi) =
+        let labels = ref [] in
+        for value = lo to min hi (len - 1) do
+          labels := sets.(value) @ !labels
+        done;
+        !labels
+      in
+      Debuginfo.with_edge_labels block.terminator.dbg
+        (Debuginfo.Positional (Array.map run runs))
+
 let simplify_switch (block : C.basic_block) labels =
   let len = Array.length labels in
   if len < 1
@@ -60,7 +82,10 @@ let simplify_switch (block : C.basic_block) labels =
       C.Int_test
         { is_signed = Unsigned; imm = Some n; lt = l0; eq = ln; gt = ln }
     in
-    block.terminator <- { block.terminator with desc }
+    let dbg =
+      switch_edge_labels block ~len ~runs:[| 0, n - 1; n, n; n + 1, len - 1 |]
+    in
+    block.terminator <- { block.terminator with desc; dbg }
   | [(l0, m); (l1, 1); (l2, n)] when Label.equal l0 l2 ->
     assert (Label.equal labels.(0) l0);
     assert (Label.equal labels.(m) l1);
@@ -70,7 +95,10 @@ let simplify_switch (block : C.basic_block) labels =
       C.Int_test
         { is_signed = Unsigned; imm = Some m; lt = l0; eq = l1; gt = l0 }
     in
-    block.terminator <- { block.terminator with desc }
+    let dbg =
+      switch_edge_labels block ~len ~runs:[| 0, m - 1; m, m; m + 1, len - 1 |]
+    in
+    block.terminator <- { block.terminator with desc; dbg }
   | [(l0, 1); (l1, 1); (l2, n)] ->
     assert (Label.equal labels.(0) l0);
     assert (Label.equal labels.(1) l1);
@@ -80,7 +108,10 @@ let simplify_switch (block : C.basic_block) labels =
       C.Int_test
         { is_signed = Unsigned; imm = Some 1; lt = l0; eq = l1; gt = l2 }
     in
-    block.terminator <- { block.terminator with desc }
+    let dbg =
+      switch_edge_labels block ~len ~runs:[| 0, 0; 1, 1; 2, len - 1 |]
+    in
+    block.terminator <- { block.terminator with desc; dbg }
   | _ -> ()
 
 (* CR-soon xclerc for xclerc: extend to other constants. *)

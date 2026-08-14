@@ -223,7 +223,7 @@ let compute_static_size lam =
     | Lstaticcatch (body, _, handler, _, _)
     | Ltrywith (body, _, _, handler, _) ->
       compute_and_join_sizes env [body; handler]
-    | Lifthenelse (_cond, ifso, ifnot, _) ->
+    | Lifthenelse (_cond, ifso, ifnot, _, _) ->
       compute_and_join_sizes env [ifso; ifnot]
     | Lsequence (_, e) ->
       compute_expression_size env e
@@ -773,15 +773,15 @@ let rec split_static_function lfun block_var local_idents lam :
         Printlambda.lfunction lfun
         Printlambda.lambda lam
     end
-  | Lifthenelse (cond, ifso, ifnot, layout) ->
+  | Lifthenelse (cond, ifso, ifnot, loc, layout) ->
     let ifso_res = split_static_function lfun block_var local_idents ifso in
     let ifnot_res = split_static_function lfun block_var local_idents ifnot in
     begin match ifso_res, ifnot_res with
     | Unreachable, Unreachable -> Unreachable
     | Reachable (lfun, ifso), Unreachable ->
-      Reachable (lfun, Lifthenelse (cond, ifso, ifnot, layout))
+      Reachable (lfun, Lifthenelse (cond, ifso, ifnot, loc, layout))
     | Unreachable, Reachable (lfun, ifnot) ->
-      Reachable (lfun, Lifthenelse (cond, ifso, ifnot, layout))
+      Reachable (lfun, Lifthenelse (cond, ifso, ifnot, loc, layout))
     | Reachable _, Reachable _ ->
       Misc.fatal_errorf "letrec: multiple functions:@ lfun=%a@ lam=%a"
         Printlambda.lfunction lfun

@@ -22,7 +22,7 @@ type primitive_transform_result =
   | Primitive of L.primitive * L.lambda list * L.scoped_location
   | Transformed of L.lambda
 
-let mk_switch ~cond ~ifso ~ifnot ~kind =
+let mk_switch ~loc ~cond ~ifso ~ifnot ~kind =
   let switch : L.lambda_switch =
     { sw_numconsts = 2;
       sw_consts = [0, ifnot; 1, ifso];
@@ -31,7 +31,15 @@ let mk_switch ~cond ~ifso ~ifnot ~kind =
       sw_failaction = None
     }
   in
-  L.Lswitch (cond, switch, L.try_to_find_location cond, kind)
+  (* [cond] may carry no location itself (e.g. a bare variable); fall back to
+     the location of the condition the caller started from, so that debug
+     info on the branch (in particular branch provenance) is not lost. *)
+  let loc =
+    match[@warning "-4"] L.try_to_find_location cond with
+    | Debuginfo.Scoped_location.Loc_unknown -> loc
+    | cond_loc -> cond_loc
+  in
+  L.Lswitch (cond, switch, loc, kind)
 
 (* This function helps bind expression to avoid duplicating them in the
    generated code. Currently, this is only used for if-then-else optimization,
@@ -62,17 +70,17 @@ let switch_for_if_then_else ~loc ~cond ~ifso ~ifnot ~kind =
     | L.Lprim (Psequand, [a; b], loc) ->
       share_expr ~kind ~expr:(aux ~loc ~kind ~cond:b ~ifso ~ifnot) (fun ifso ->
           aux ~loc ~kind ~cond:a ~ifso ~ifnot)
-    | L.Lifthenelse (a, b, Lconst (Const_base (Const_int 0)), _) ->
+    | L.Lifthenelse (a, b, Lconst (Const_base (Const_int 0)), _, _) ->
       share_expr ~kind ~expr:(aux ~loc ~kind ~cond:b ~ifso ~ifnot) (fun ifso ->
           aux ~loc ~kind ~cond:a ~ifso ~ifnot)
     | L.Lprim (Psequor, [a; b], loc) ->
       share_expr ~kind ~expr:(aux ~loc ~kind ~cond:b ~ifso ~ifnot) (fun ifnot ->
           aux ~loc ~kind ~cond:a ~ifso ~ifnot)
-    | L.Lifthenelse (a, Lconst (Const_base (Const_int 1)), b, _) ->
+    | L.Lifthenelse (a, Lconst (Const_base (Const_int 1)), b, _, _) ->
       share_expr ~kind ~expr:(aux ~loc ~kind ~cond:b ~ifso ~ifnot) (fun ifnot ->
           aux ~loc ~kind ~cond:a ~ifso ~ifnot)
     | L.Lprim (Pnot, [c], loc) -> aux ~loc ~kind ~cond:c ~ifso:ifnot ~ifnot:ifso
-    | L.Lifthenelse (cond, inner_ifso, inner_ifnot, _) ->
+    | L.Lifthenelse (cond, inner_ifso, inner_ifnot, _, _) ->
       share_expr ~kind ~expr:(aux ~loc ~kind ~cond:inner_ifso ~ifso ~ifnot)
         (fun new_ifso ->
           share_expr ~kind ~expr:(aux ~loc ~kind ~cond:inner_ifnot ~ifso ~ifnot)
@@ -86,7 +94,7 @@ let switch_for_if_then_else ~loc ~cond ~ifso ~ifnot ~kind =
       | L.Lconst (Const_base (Const_int 0)), L.Lconst (Const_base (Const_int 1))
         ->
         L.Lprim (Pnot, [cond], loc)
-      | _ -> mk_switch ~cond ~ifso ~ifnot ~kind)
+      | _ -> mk_switch ~loc ~cond ~ifso ~ifnot ~kind)
   in
   share_expr ~kind ~expr:ifso (fun ifso ->
       share_expr ~kind ~expr:ifnot (fun ifnot ->
@@ -111,6 +119,7 @@ let rec_catch_for_while_loop env cond body =
               ( Lvar cond_result,
                 Lsequence (body, Lstaticraise (cont, [])),
                 Lconst (Const_base (Const_int 0)),
+                L.try_to_find_location cond,
                 L.layout_unit ) ),
         Same_region,
         L.layout_unit )
@@ -222,10 +231,12 @@ let rec_catch_for_for_loop env loc ident duid start stop
                                             Lstaticraise
                                               (cont, [Lvar next_naked]),
                                             L.lambda_unit,
+                                            loc,
                                             L.layout_unit ) ) ) ),
                             Same_region,
                             L.layout_unit ) ) ),
                 L.lambda_unit,
+                loc,
                 L.layout_unit ) ) )
   in
   env, lam
@@ -279,6 +290,7 @@ let initialize_array0 env loc ~length array_set_kind width ~init creation_expr =
         ( length_is_greater_than_zero_and_is_not_zero_mod_elements_per_word,
           zero_init_last_field,
           L.lambda_unit,
+          loc,
           L.layout_unit )
   in
   let env, initialize =
@@ -777,7 +789,11 @@ let arrayblit_expanded env ~(src_mutability : L.mutable_flag)
          modes). *)
       L.Lregion
         ( L.Lifthenelse
-            (must_copy_backwards, copy_backwards, copy_forwards, L.layout_unit),
+            ( must_copy_backwards,
+              copy_backwards,
+              copy_forwards,
+              loc,
+              L.layout_unit ),
           L.layout_unit )
     in
     let expr =

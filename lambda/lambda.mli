@@ -966,9 +966,11 @@ type lambda =
       lambda * (static_label * (Ident.t * debug_uid * layout) list) * lambda
       * pop_region * layout
   | Ltrywith of lambda * Ident.t * debug_uid * lambda * layout
-(* Lifthenelse (e, t, f, layout) evaluates t if e evaluates to 0, and evaluates f if
-   e evaluates to any other value; layout must be the layout of [t] and [f] *)
-  | Lifthenelse of lambda * lambda * lambda * layout
+(* Lifthenelse (e, t, f, loc, layout) evaluates t if e evaluates to 0, and evaluates
+   f if e evaluates to any other value; layout must be the layout of [t] and [f].
+   The location is that of the conditional expression (e.g. the [if] or the
+   [match] it was compiled from), used for debug info on the branch. *)
+  | Lifthenelse of lambda * lambda * lambda * scoped_location * layout
   | Lsequence of lambda * lambda
   | Lwhile of lambda_while
   | Lfor of lambda_for

@@ -1386,7 +1386,8 @@ let transl_class ~scopes ids cl_id pub_meths cl vflag =
          so that the program's behaviour does not change between runs *)
       lupdate_cache
     else
-      Lifthenelse(lfield cached 0, lambda_unit, lupdate_cache, layout_unit) in
+      Lifthenelse(lfield cached 0, lambda_unit, lupdate_cache,
+                  Debuginfo.Scoped_location.Loc_unknown, layout_unit) in
   let lcache (lam, rkind) =
     let lam = Lsequence (lcheck_cache, lam) in
     let lam =

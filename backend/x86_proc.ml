@@ -402,6 +402,12 @@ type output_pos = asm_line DLL.cell option (* None means the beginning *)
 
 let current_output_pos () = DLL.last_cell asm_code
 
+let same_output_pos (a : output_pos) (b : output_pos) =
+  match a, b with
+  | Some a, Some b -> DLL.same_cell a b
+  | None, None -> true
+  | None, Some _ | Some _, None -> false
+
 let next_pos pos =
   match pos with None -> DLL.hd_cell asm_code | Some cell -> DLL.next cell
 
@@ -487,7 +493,11 @@ let label_instruction_pairs ~from_pos ~to_pos ~is_first =
           DLL.insert_before second_cell (label_line second_label);
           DLL.insert_after second_cell (label_line end_label);
           let site =
-            first_label, second_label, end_label, site_retaddr_offset ()
+            ( first_label,
+              second_label,
+              end_label,
+              site_retaddr_offset (),
+              (Some second_cell : output_pos) )
           in
           loop next (site :: sites))
   in

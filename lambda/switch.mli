@@ -111,8 +111,11 @@ module type S =
     (* [arg_as_test arg] casts [arg], known to be either 0 or 1,
        to a boolean test *)
     val arg_as_test : arg -> test
-    (* [make_if cond ifso ifnot] generates a conditional branch *)
-    val make_if : layout -> test -> act -> act -> act
+    (* [make_if kind loc cond ifso ifnot] generates a conditional branch;
+       [loc] is the source position of the conditional, attached to the
+       branch for debug info (the test alone may carry none, e.g. a bare
+       variable) *)
+    val make_if : layout -> loc -> test -> act -> act -> act
    (* construct an actual switch :
       make_switch arg cases acts
       NB:  cases is in the value form *)

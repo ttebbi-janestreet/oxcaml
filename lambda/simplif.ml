@@ -78,10 +78,10 @@ let rec eliminate_ref id = function
       Lstaticcatch(eliminate_ref id e1, i, eliminate_ref id e2, r, kind)
   | Ltrywith(e1, v, duid, e2, kind) ->
       Ltrywith(eliminate_ref id e1, v, duid, eliminate_ref id e2, kind)
-  | Lifthenelse(e1, e2, e3, kind) ->
+  | Lifthenelse(e1, e2, e3, loc, kind) ->
       Lifthenelse(eliminate_ref id e1,
                   eliminate_ref id e2,
-                  eliminate_ref id e3, kind)
+                  eliminate_ref id e3, loc, kind)
   | Lsequence(e1, e2) ->
       Lsequence(eliminate_ref id e1, eliminate_ref id e2)
   | Lwhile lw ->
@@ -185,7 +185,7 @@ let simplify_exits lam =
   | Ltrywith(l1, _v, _duid, l2, _kind) ->
       count ~try_depth:(try_depth+1) l1;
       count ~try_depth l2;
-  | Lifthenelse(l1, l2, l3, _kind) ->
+  | Lifthenelse(l1, l2, l3, _loc, _kind) ->
       count ~try_depth l1;
       count ~try_depth l2;
       count ~try_depth l3
@@ -363,11 +363,12 @@ let simplify_exits lam =
   | Ltrywith(l1, v, duid, l2, kind) ->
       let l1 = simplif ~layout ~try_depth:(try_depth + 1) l1 in
       Ltrywith(l1, v, duid, simplif ~layout ~try_depth l2, result_layout kind)
-  | Lifthenelse(l1, l2, l3, kind) ->
+  | Lifthenelse(l1, l2, l3, loc, kind) ->
       Lifthenelse(
         simplif ~layout:None ~try_depth l1,
         simplif ~layout ~try_depth l2,
         simplif ~layout ~try_depth l3,
+        loc,
         result_layout kind)
   | Lsequence(l1, l2) ->
       Lsequence(
@@ -528,7 +529,7 @@ let simplify_lets lam ~restrict_to_upstream_dwarf ~gdwarf_may_alter_codegen =
   | Lstaticraise (_i,ls) -> List.iter (count bv) ls
   | Lstaticcatch(l1, _, l2, Same_region, _) -> count bv l1; count bv l2
   | Ltrywith(l1, _v, _duid, l2, _kind) -> count bv l1; count bv l2
-  | Lifthenelse(l1, l2, l3, _kind) -> count bv l1; count bv l2; count bv l3
+  | Lifthenelse(l1, l2, l3, _loc, _kind) -> count bv l1; count bv l2; count bv l3
   | Lsequence(l1, l2) -> count bv l1; count bv l2
   | Lwhile {wh_cond; wh_body} ->
       count Ident.Map.empty wh_cond; count Ident.Map.empty wh_body
@@ -704,7 +705,7 @@ let simplify_lets lam ~restrict_to_upstream_dwarf ~gdwarf_may_alter_codegen =
       Lstaticcatch (simplif l1, (i,args), simplif l2, r, kind)
   | Ltrywith(l1, v, duid, l2, kind) ->
     Ltrywith(simplif l1, v, duid, simplif l2, kind)
-  | Lifthenelse(l1, l2, l3, kind) -> Lifthenelse(simplif l1, simplif l2, simplif l3, kind)
+  | Lifthenelse(l1, l2, l3, loc, kind) -> Lifthenelse(simplif l1, simplif l2, simplif l3, loc, kind)
   | Lsequence(Lifused(v, l1), l2) ->
       if count_var v > 0
       then Lsequence(simplif l1, simplif l2)
@@ -795,7 +796,7 @@ let rec emit_tail_infos is_tail lambda =
   | Ltrywith (body, _, _, handler, _k) ->
       emit_tail_infos false body;
       emit_tail_infos is_tail handler
-  | Lifthenelse (cond, ifso, ifno, _k) ->
+  | Lifthenelse (cond, ifso, ifno, _loc, _k) ->
       emit_tail_infos false cond;
       emit_tail_infos is_tail ifso;
       emit_tail_infos is_tail ifno
@@ -861,7 +862,7 @@ let split_default_wrapper ~id:fun_id ~debug_uid:fun_duid ~kind ~params ~return
        the pattern-matching compiler for options.
     *)
     | Llet(Strict, k, id, duid,
-           (Lifthenelse(Lprim (Pisint _, [Lvar optparam], _), _, _, _) as def),
+           (Lifthenelse(Lprim (Pisint _, [Lvar optparam], _), _, _, _, _) as def),
            rest) when
         String.starts_with (Ident.name optparam) ~prefix:"*opt*" &&
         List.exists (fun p -> Ident.same p.name optparam) params

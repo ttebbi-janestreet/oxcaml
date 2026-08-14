@@ -1925,8 +1925,34 @@ let close_apply_cont acc env ~dbg cont trap_action args : Expr_with_acc.t =
   in
   Expr_with_acc.create_apply_cont acc apply_cont
 
+(* Patchprof profiles are consumed together with the pseudo-instrumentation
+   labels, so compiling for patchprof enables them automatically. *)
+let branch_labels_enabled () =
+  !Oxcaml_flags.branch_provenance || Oxcaml_flags.patchprof_enabled ()
+
+(* Attach fresh pseudo-instrumentation labels for a switch about to be
+   created: the positional array is indexed by scrutinee value (so that it
+   stays meaningful when later simplification deletes arms), and the edge
+   discriminator of each label is the value itself. *)
+let attach_branch_labels condition_dbg ~num_values =
+  if (not (branch_labels_enabled ()))
+     || num_values <= 0
+     || List.compare_length_with (Debuginfo.to_items condition_dbg) 0 = 0
+  then condition_dbg
+  else
+    Debuginfo.with_edge_labels condition_dbg
+      (Debuginfo.create_edge_labels condition_dbg
+         ~edges:(Array.init num_values (fun value -> value)))
+
 let close_switch acc env ~condition_dbg scrutinee (sw : IR.switch) :
     Expr_with_acc.t =
+  let num_values =
+    List.fold_left
+      (fun acc (case, _, _, _, _) -> max acc (case + 1))
+      (match sw.failaction with None -> 0 | Some _ -> sw.numconsts)
+      sw.consts
+  in
+  let condition_dbg = attach_branch_labels condition_dbg ~num_values in
   let scrutinee = find_simple_from_id env scrutinee in
   let untagged_scrutinee = Variable.create "untagged" K.naked_immediate in
   let untagged_scrutinee_duid = Flambda_debug_uid.none in
@@ -4097,6 +4123,7 @@ let close_program (type mode) ~(mode : mode Flambda_features.mode)
     ~toplevel_my_ghost_region ~toplevel_my_alloc_region ~sections :
     mode close_program_result =
   let env = Env.create ~big_endian in
+  Debuginfo.reset_branch_label_discs ();
   let module_symbol =
     Symbol.create_wrapped
       (Flambda2_import.Symbol.for_compilation_unit compilation_unit)

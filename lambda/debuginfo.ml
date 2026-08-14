@@ -220,6 +220,17 @@ module Scoped_location = struct
     | Loc_known { loc; scopes } -> Loc_known { loc; scopes = f ~scopes ~loc }
 end
 
+(* Pseudo-instrumentation labels for branch profiling: a label is created
+   for each control-flow edge of a branching/switching construct when the
+   construct is created or lowered, is carried in the debug info of the
+   resulting branch instructions (one set of labels per outgoing edge, since
+   transformations may stack several labels on one edge, e.g. by constant
+   folding a branch), and is preserved - only ever swapped or rearranged
+   along with the control flow - until emission into the executable's
+   metadata.  A label is identified by the debug info of the creating
+   construct, a discriminator counted globally (per compilation unit) to
+   distinguish several constructs sharing that debug info, and an edge
+   discriminator naming the original construct's edge. *)
 type item = {
   dinfo_file: string;
   dinfo_line: int;
@@ -232,6 +243,25 @@ type item = {
   dinfo_uid: string option;
   dinfo_function_symbol: string option;
   dinfo_dir: string option;
+  dinfo_edges: edge_labels option;
+}
+
+(* Successor information travels in two forms.  While the branch still has
+   positional successors, [Positional] maps each successor position of the
+   current representation (its meaning follows the construct: [ifso]/[ifnot]
+   for a two-way conditional, [lt]/[eq]/[gt](/[uo]) for comparison
+   terminators, the scrutinee value for a switch) to the set of labels
+   carried by that edge.  Once linearization has fixed which side of a
+   concrete conditional jump is taken, [Resolved] records the label sets of
+   its two outcomes directly. *)
+and edge_labels =
+  | Positional of branch_label list array
+  | Resolved of { taken: branch_label list; fallthrough: branch_label list }
+
+and branch_label = {
+  label_creator: item list; (* outermost frame first, like [Dbg.t] *)
+  label_disc: int;
+  label_edge: int;
 }
 
 let item_with_uid_and_function_symbol item ~dinfo_uid ~dinfo_function_symbol =
@@ -261,7 +291,8 @@ module Dbg = struct
                             dinfo_scopes = _;
                             dinfo_uid = dinfo_uid1;
                             dinfo_function_symbol = _;
-                            dinfo_dir = dinfo_dir1 } = d1
+                            dinfo_dir = dinfo_dir1;
+                            dinfo_edges = _ } = d1
        in
        let { dinfo_file = dinfo_file2;
                             dinfo_line = dinfo_line2;
@@ -273,7 +304,8 @@ module Dbg = struct
                             dinfo_scopes = _;
                             dinfo_uid = dinfo_uid2;
                             dinfo_function_symbol = _;
-                            dinfo_dir = dinfo_dir2 } = d2
+                            dinfo_dir = dinfo_dir2;
+                            dinfo_edges = _ } = d2
        in
        let c = String.compare dinfo_file1 dinfo_file2 in
        if c <> 0 then c else
@@ -373,6 +405,7 @@ let item_from_location ~scopes loc =
     dinfo_uid = None;
     dinfo_function_symbol = None;
     dinfo_dir = !Clflags.directory;
+    dinfo_edges = None;
   }
 
 let from_location = function
@@ -406,14 +439,104 @@ let to_location { dbg; assume_zero_alloc=_ } =
       } in
     { loc_ghost = false; loc_start; loc_end; }
 
-let inline { dbg = dbg1; assume_zero_alloc = a1; }
+(* The global discriminator counter; reset per compilation unit (from
+   [Closure_conversion.close_program], before any label is created), so that
+   discriminators are deterministic per unit. *)
+let branch_label_disc_counter = ref 0
+
+(* Inlining must remap the inlinee's label discriminators to fresh ones:
+   otherwise two inlined copies of the same construct (or constructs of
+   different compilation units inlined into this one) could collide on
+   (creator stack, discriminator).  The remapping is memoized per inlining
+   instance so that all edges of one original construct keep sharing one
+   discriminator. *)
+let branch_label_disc_remap : (string * int, int) Hashtbl.t =
+  Hashtbl.create 16
+
+let reset_branch_label_discs () =
+  branch_label_disc_counter := 0;
+  Hashtbl.reset branch_label_disc_remap
+
+let next_branch_label_disc () =
+  let disc = !branch_label_disc_counter in
+  incr branch_label_disc_counter;
+  disc
+
+let remap_branch_label_disc ~instance disc =
+  match Hashtbl.find_opt branch_label_disc_remap (instance, disc) with
+  | Some fresh -> fresh
+  | None ->
+    let fresh = next_branch_label_disc () in
+    Hashtbl.add branch_label_disc_remap (instance, disc) fresh;
+    fresh
+
+let inline ?remap_instance { dbg = dbg1; assume_zero_alloc = a1; }
       ~from_inlined_body:{ dbg = dbg2; assume_zero_alloc = a2; } =
+  (* Pseudo-instrumentation labels carried by the inlinee's branches get
+     their creator context extended exactly like the carrying debug info,
+     and their discriminators remapped to fresh ones of this unit (see
+     [remap_branch_label_disc]). *)
+  let inline_label label =
+    let label_disc =
+      match remap_instance with
+      | None -> label.label_disc
+      | Some instance -> remap_branch_label_disc ~instance label.label_disc
+    in
+    { label with label_creator = dbg1 @ label.label_creator; label_disc }
+  in
+  let inline_item item =
+    match item.dinfo_edges with
+    | None -> item
+    | Some (Positional sets) ->
+      { item with
+        dinfo_edges = Some (Positional (Array.map (List.map inline_label) sets))
+      }
+    | Some (Resolved { taken; fallthrough }) ->
+      { item with
+        dinfo_edges =
+          Some (Resolved { taken = List.map inline_label taken;
+                           fallthrough = List.map inline_label fallthrough })
+      }
+  in
+  let dbg2 =
+    if List.exists (fun item -> Option.is_some item.dinfo_edges) dbg2
+    then List.map inline_item dbg2
+    else dbg2
+  in
   { dbg = dbg1 @ dbg2;
     assume_zero_alloc =
       (* Drop "inferred" zero_alloc annotation from a call when
          the callee is inlined. *)
       if ZA.Assume_info.is_inferred a1 then a2 else
       ZA.Assume_info.meet a1 a2; }
+
+let with_edge_labels t edges =
+  let rec set_last = function
+    | [] -> []
+    | [item] -> [{ item with dinfo_edges = Some edges }]
+    | item :: items -> item :: set_last items
+  in
+  { t with dbg = set_last t.dbg }
+
+let edge_labels t =
+  let rec last = function
+    | [] -> None
+    | [item] -> item.dinfo_edges
+    | _ :: items -> last items
+  in
+  last t.dbg
+
+let create_edge_labels t ~edges =
+  let disc = next_branch_label_disc () in
+  (* Strip payloads from the creator snapshot so labels do not nest. *)
+  let creator =
+    List.map (fun item -> { item with dinfo_edges = None }) t.dbg
+  in
+  Positional
+    (Array.map
+       (fun edge -> [{ label_creator = creator; label_disc = disc;
+                       label_edge = edge }])
+       edges)
 
 let is_none { dbg; assume_zero_alloc } =
   ZA.Assume_info.is_none assume_zero_alloc && Dbg.is_none dbg

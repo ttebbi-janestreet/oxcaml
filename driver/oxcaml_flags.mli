@@ -60,7 +60,13 @@ val cfg_value_propagation_flow : bool ref
 
 val reorder_blocks_random : int option ref
 val basic_block_sections : bool ref
+val branch_provenance : bool ref
 val module_entry_functions_section : bool ref
+
+(** Whether patchprof instrumentation is effectively enabled: [patchprof] is
+    set and no incompatible section option is in effect.  Fatal-errors if
+    [-patchprof] was requested explicitly alongside an incompatible option. *)
+val patchprof_enabled : unit -> bool
 
 val dasm_comments : bool ref
 

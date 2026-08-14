@@ -1100,7 +1100,7 @@ type lambda =
       lambda * (static_label * (Ident.t * debug_uid * layout) list) * lambda
       * pop_region * layout
   | Ltrywith of lambda * Ident.t * debug_uid * lambda * layout
-  | Lifthenelse of lambda * lambda * lambda * layout
+  | Lifthenelse of lambda * lambda * lambda * scoped_location * layout
   | Lsequence of lambda * lambda
   | Lwhile of lambda_while
   | Lfor of lambda_for
@@ -1255,9 +1255,13 @@ let rec try_to_find_location lam =
   | Levent (_, { lev_loc = loc; _ })
   | Lsplice (loc, _) ->
     loc
+  | Lifthenelse (lam, _, _, loc, _) -> (
+    (* The condition's own location is more precise when it has one. *)
+    match[@warning "-4"] try_to_find_location lam with
+    | Debuginfo.Scoped_location.Loc_unknown -> loc
+    | cond_loc -> cond_loc)
   | Llet (_, _, _, _, lam, _)
   | Lmutlet (_, _, _, lam, _)
-  | Lifthenelse (lam, _, _, _)
   | Lstaticcatch (lam, _, _, _, _)
   | Lstaticraise (_, lam :: _)
   | Lwhile { wh_cond = lam; _ }
@@ -1703,8 +1707,9 @@ let make_key e =
         Lstaticcatch (tr_rec env e1,xs,tr_rec env e2, r, kind)
     | Ltrywith (e1,x,x_duid,e2,kind) ->
         Ltrywith (tr_rec env e1,x,x_duid,tr_rec env e2,kind)
-    | Lifthenelse (cond,ifso,ifnot,kind) ->
-        Lifthenelse (tr_rec env cond,tr_rec env ifso,tr_rec env ifnot,kind)
+    | Lifthenelse (cond,ifso,ifnot,_,kind) ->
+        Lifthenelse (tr_rec env cond,tr_rec env ifso,tr_rec env ifnot,
+                     Loc_unknown,kind)
     | Lsequence (e1,e2) ->
         Lsequence (tr_rec env e1,tr_rec env e2)
     | Lassign (x,e) ->
@@ -1804,7 +1809,7 @@ let shallow_iter ~tail ~non_tail:f = function
       tail e1; tail e2
   | Ltrywith(e1, _, _, e2,_) ->
       f e1; tail e2
-  | Lifthenelse(e1, e2, e3,_) ->
+  | Lifthenelse(e1, e2, e3, _, _) ->
       f e1; tail e2; tail e3
   | Lsequence(e1, e2) ->
       f e1; tail e2
@@ -1893,7 +1898,7 @@ let rec free_variables = function
            param
            (free_variables handler))
         (free_variables body)
-  | Lifthenelse(e1, e2, e3, _) ->
+  | Lifthenelse(e1, e2, e3, _, _) ->
       Ident.Set.union
         (Ident.Set.union (free_variables e1) (free_variables e2))
         (free_variables e3)
@@ -1942,14 +1947,14 @@ let next_raise_count () =
 let staticfail = Lstaticraise (Static_label.fail,[])
 
 let rec is_guarded = function
-  | Lifthenelse(_cond, _body, Lstaticraise (lbl,[]),_) when Static_label.equal lbl Static_label.fail -> true
+  | Lifthenelse(_cond, _body, Lstaticraise (lbl,[]), _, _) when Static_label.equal lbl Static_label.fail -> true
   | Llet(_str, _k, _id, _duid, _lam, body) -> is_guarded body
   | Levent(lam, _ev) -> is_guarded lam
   | _ -> false
 
 let rec patch_guarded patch = function
-  | Lifthenelse (cond, body, Lstaticraise (lbl,[]), kind) when Static_label.equal lbl Static_label.fail ->
-      Lifthenelse (cond, body, patch, kind)
+  | Lifthenelse (cond, body, Lstaticraise (lbl,[]), loc, kind) when Static_label.equal lbl Static_label.fail ->
+      Lifthenelse (cond, body, patch, loc, kind)
   | Llet(str, k, id, duid, lam, body) ->
       Llet (str, k, id, duid, lam, patch_guarded patch body)
   | Levent(lam, ev) ->
@@ -2220,8 +2225,8 @@ let build_substs update_env ?(freshen_bound_variables = false) s =
     | Ltrywith(body, exn, duid, handler,kind) ->
         let exn, duid, l' = bind exn duid l in
         Ltrywith(subst s l body, exn, duid, subst s l' handler,kind)
-    | Lifthenelse(e1, e2, e3,kind) ->
-        Lifthenelse(subst s l e1, subst s l e2, subst s l e3,kind)
+    | Lifthenelse(e1, e2, e3,loc,kind) ->
+        Lifthenelse(subst s l e1, subst s l e2, subst s l e3,loc,kind)
     | Lsequence(e1, e2) -> Lsequence(subst s l e1, subst s l e2)
     | Lwhile lw -> Lwhile { wh_cond = subst s l lw.wh_cond;
                             wh_body = subst s l lw.wh_body}
@@ -2483,13 +2488,13 @@ let shallow_map ~tail ~non_tail:f lam =
       if old_e1 == new_e1 && old_e2 == new_e2
       then lam
       else Ltrywith (new_e1, v, duid, new_e2, layout)
-  | Lifthenelse (old_e1, old_e2, old_e3, layout) ->
+  | Lifthenelse (old_e1, old_e2, old_e3, loc, layout) ->
       let new_e1 = f old_e1 in
       let new_e2 = tail old_e2 in
       let new_e3 = tail old_e3 in
       if old_e1 == new_e1 && old_e2 == new_e2 && old_e3 == new_e3
       then lam
-      else Lifthenelse (new_e1, new_e2, new_e3, layout)
+      else Lifthenelse (new_e1, new_e2, new_e3, loc, layout)
   | Lsequence (old_e1, old_e2) ->
       let new_e1 = f old_e1 in
       let new_e2 = tail old_e2 in

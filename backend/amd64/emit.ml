@@ -1966,6 +1966,19 @@ let prologue_stack_offset () =
   assert !frame_required;
   frame_size () - 8 - if fp then 8 else 0
 
+(* Conditional jumps whose Linear instruction carries resolved edge labels,
+   recorded at emission in buffer order.  After the patchprof site scanner
+   has run, sites are paired with these records by output position
+   ([X86_proc.same_output_pos]) so the label metadata can be emitted
+   alongside the site metadata. *)
+let labelled_jccs : (X86_proc.output_pos * Debuginfo.t) list ref = ref []
+
+let record_labelled_jcc (i : Linear.instruction) =
+  match Debuginfo.edge_labels i.dbg with
+  | Some (Debuginfo.Resolved _) ->
+    labelled_jccs := (X86_proc.current_output_pos (), i.dbg) :: !labelled_jccs
+  | Some (Debuginfo.Positional _) | None -> ()
+
 (* Emit an instruction *)
 let emit_instr ~first ~last ~fallthrough i =
   let open Simd_instrs in
@@ -2569,18 +2582,65 @@ let emit_instr ~first ~last ~fallthrough i =
     emit_Llabel fallthrough lbl section_name
   | Lbranch lbl -> I.jmp (emit_label_arg ~section:Text lbl)
   | Lcondbranch (tst, lbl) ->
-    emit_test i tst ~taken:(fun c -> I.j c (emit_label_arg ~section:Text lbl))
-  | Lcondbranch3 (lbl0, lbl1, lbl2) -> (
+    emit_test i tst ~taken:(fun c ->
+        I.j c (emit_label_arg ~section:Text lbl);
+        record_labelled_jcc i)
+  | Lcondbranch3 (lbl0, lbl1, lbl2) ->
+    (* The three jumps share one Linear instruction, so linearization could
+       not resolve edge labels per jump; do it here, where each jump is
+       emitted individually.  Positions are [lt], [eq], [gt] in that order,
+       matching the positional label sets.  Only the last emitted jump can
+       fall through to a successor: the positions with no explicit jump. *)
+    let sets =
+      match Debuginfo.edge_labels i.dbg with
+      | Some (Debuginfo.Positional ([| _; _; _ |] as sets)) -> Some sets
+      | Some (Debuginfo.Positional _ | Debuginfo.Resolved _) | None -> None
+    in
+    let last_emitted =
+      match lbl0, lbl1, lbl2 with
+      | _, _, Some _ -> 2
+      | _, Some _, None -> 1
+      | _, None, None -> 0
+    in
+    let record_branch position =
+      match sets with
+      | None -> ()
+      | Some sets ->
+        let fallthrough =
+          if position <> last_emitted
+          then []
+          else
+            let labels = ref [] in
+            List.iteri
+              (fun j lbl ->
+                match lbl with
+                | None -> labels := sets.(j) @ !labels
+                | Some _ -> ())
+              [lbl0; lbl1; lbl2];
+            !labels
+        in
+        let dbg =
+          Debuginfo.with_edge_labels i.dbg
+            (Debuginfo.Resolved { taken = sets.(position); fallthrough })
+        in
+        labelled_jccs := (X86_proc.current_output_pos (), dbg) :: !labelled_jccs
+    in
     I.cmp (int 1) (arg i 0);
     (match lbl0 with
     | None -> ()
-    | Some lbl -> I.jb (emit_label_arg ~section:Text lbl));
+    | Some lbl ->
+      I.jb (emit_label_arg ~section:Text lbl);
+      record_branch 0);
     (match lbl1 with
     | None -> ()
-    | Some lbl -> I.je (emit_label_arg ~section:Text lbl));
-    match lbl2 with
+    | Some lbl ->
+      I.je (emit_label_arg ~section:Text lbl);
+      record_branch 1);
+    (match lbl2 with
     | None -> ()
-    | Some lbl -> I.ja (emit_label_arg ~section:Text lbl))
+    | Some lbl ->
+      I.ja (emit_label_arg ~section:Text lbl);
+      record_branch 2)
   | Lswitch jumptbl ->
     let lbl = L.create Text in
     (* rax and rdx are clobbered by the Lswitch, meaning that no variable that
@@ -2763,12 +2823,20 @@ let fundecl fundecl =
   X86_proc.peephole_optimize_from fun_body_start;
   let fun_body_end = current_output_pos () in
   if Patchprof.enabled ()
-  then
+  then (
+    let recorded = !labelled_jccs in
     X86_proc.label_instruction_pairs ~from_pos:fun_body_start
       ~to_pos:fun_body_end ~is_first:is_patchprof_flag_writer
-    |> List.iter (fun (site, jcc, fin, retaddr_offset) ->
+    |> List.iter (fun (site, jcc, fin, retaddr_offset, jcc_pos) ->
+        let provenance =
+          List.find_map
+            (fun (pos, dbg) ->
+              if X86_proc.same_output_pos pos jcc_pos then Some dbg else None)
+            recorded
+        in
         Patchprof.record ~section:!current_basic_block_section ~site ~jcc ~fin
-          ~retaddr_offset);
+          ~retaddr_offset ~provenance));
+  labelled_jccs := [];
   List.iter emit_call_gc !call_gc_sites;
   List.iter emit_local_realloc !local_realloc_sites;
   let gc_jump_pads_end = current_output_pos () in

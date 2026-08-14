@@ -616,10 +616,10 @@ let rec choice ctx t =
         let l1 = traverse ctx l1 in
         let+ l2 = choice ctx ~tail l2 in
         Lsequence (l1, l2)
-    | Lifthenelse (l1, l2, l3, kind) ->
+    | Lifthenelse (l1, l2, l3, loc, kind) ->
         let l1 = traverse ctx l1 in
         let+ (l2, l3) = choice_pair ctx ~tail (l2, l3) in
-        Lifthenelse (l1, l2, l3, kind)
+        Lifthenelse (l1, l2, l3, loc, kind)
     | Lmutlet (vk, var, var_duid, def, body) ->
         (* mutable bindings are not TMC-specialized *)
         let def = traverse ctx def in

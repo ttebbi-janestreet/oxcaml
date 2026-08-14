@@ -3427,9 +3427,22 @@ module SArgBlocks = struct
 
   let arg_as_test arg = arg
 
-  let make_if () cond ifso ifnot =
-    Cifthenelse
-      (cond, Debuginfo.none, ifso, Debuginfo.none, ifnot, Debuginfo.none)
+  (* Every test the switch compiler creates is a fresh branch: when the
+     switch being translated carries pseudo-instrumentation labels, give the
+     test fresh labels of its own (edges 0 = ifso, 1 = ifnot), so its
+     outcome distribution is recorded.  CR ttebbi: distribute the switch's
+     per-value labels onto the test edges that commit to an arm (needs the
+     interval information from [Switch.Make]); the same applies to the
+     value offset of sub-jump-tables created under a test tree. *)
+  let make_if () dbg cond ifso ifnot =
+    let dbg =
+      match Debuginfo.edge_labels dbg with
+      | None -> Debuginfo.none
+      | Some _ ->
+        Debuginfo.with_edge_labels dbg
+          (Debuginfo.create_edge_labels dbg ~edges:[| 0; 1 |])
+    in
+    Cifthenelse (cond, Debuginfo.none, ifso, Debuginfo.none, ifnot, dbg)
 
   let make_switch dbg () arg cases actions =
     let actions = Array.map (fun expr -> expr, dbg) actions in

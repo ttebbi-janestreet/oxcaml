@@ -1413,7 +1413,7 @@ let rec lam ppf = function
   | Ltrywith(lbody, param, duid, lhandler, _kind) ->
       fprintf ppf "@[<2>(try@ %a@;<1 -1>with %a%a@ %a)@]"
         lam lbody Ident.print param debug_uid duid lam lhandler
-  | Lifthenelse(lcond, lif, lelse, _kind) ->
+  | Lifthenelse(lcond, lif, lelse, _loc, _kind) ->
       fprintf ppf "@[<2>(if@ %a@ %a@ %a)@]" lam lcond lam lif lam lelse
   | Lsequence(l1, l2) ->
       fprintf ppf "@[<2>(seq@ %a@ %a)@]" lam l1 sequence l2
