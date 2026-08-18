@@ -12,13 +12,18 @@
 
 /* Prototype runtime for patchprof.
 
-   If [OCAML_PATCHPROF_OUT] is set, choose one fixed subset of recorded sites,
+   If [OCAML_PATCHPROF_OUT] is set (a file name, or a directory into which
+   each process writes a freshly created, uniquely named profile, so that
+   concurrent instances can share the environment), choose one fixed subset
+   of recorded sites,
    patch it before the OCaml program starts, and append one counter batch
    whenever a domain stops.  Moving the subset during execution is outside
    the scope of this prototype.
 
-   The subset is chosen deterministically from the required
-   [OCAML_PATCHPROF_SEED], so a failing run can be reproduced exactly. */
+   The subset is chosen deterministically from the selection seed, which is
+   randomized by default and recorded in the profile's selection records, so
+   a run can be reproduced exactly by setting [OCAML_PATCHPROF_SEED] to the
+   recorded value. */
 
 #define _GNU_SOURCE
 #define CAML_INTERNALS
@@ -26,6 +31,7 @@
 #include <elf.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <link.h>
 #include <math.h>
 #include <pthread.h>
@@ -34,6 +40,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/random.h>
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
@@ -258,7 +265,15 @@ static int read_seed(void)
   uint64_t seed;
   const char *text =
     (const char *)caml_secure_getenv(T("OCAML_PATCHPROF_SEED"));
-  if (parse_u64(text, &seed) != 0) return -1;
+  if (text == NULL) {
+    /* Randomize by default; the seed is recorded in the profile's selection
+       records, so the run can still be reproduced exactly by setting
+       [OCAML_PATCHPROF_SEED] to the recorded value. */
+    if (getrandom(&seed, sizeof seed, 0) != sizeof seed)
+      caml_fatal_error("patchprof: could not obtain a random seed");
+  } else {
+    if (parse_u64(text, &seed) != 0) return -1;
+  }
   selection_seed = seed;
   prng_state = seed;
   return 0;
@@ -1221,6 +1236,44 @@ static int emit_selection_record(void)
   return write_record(CAML_PATCHPROF_RECORD_SELECTION, payload, 9);
 }
 
+/* When [OCAML_PATCHPROF_OUT] names a directory, emit into a freshly
+   created, uniquely named file inside it, so that many instrumented
+   processes can run concurrently with the same environment.  [O_EXCL]
+   guarantees uniqueness; the name additionally carries the executable's
+   base name and the pid to be informative. */
+static int open_profile(const char *output)
+{
+  struct stat st;
+  if (stat(output, &st) != 0 || !S_ISDIR(st.st_mode))
+    return open(output,
+                O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW
+                  | O_NONBLOCK,
+                0600);
+  char exe[PATH_MAX];
+  ssize_t exe_len = readlink("/proc/self/exe", exe, sizeof exe - 1);
+  const char *base = "unknown";
+  if (exe_len > 0) {
+    exe[exe_len] = '\0';
+    base = strrchr(exe, '/');
+    base = base == NULL ? exe : base + 1;
+  }
+  for (int attempt = 0; attempt < 100; attempt++) {
+    uint64_t z;
+    if (getrandom(&z, sizeof z, 0) != sizeof z) return -1;
+    char path[PATH_MAX];
+    if (snprintf(path, sizeof path, "%s/%s.%ld.%016llx.patchprof", output,
+                 base, (long)getpid(), (unsigned long long)z)
+        >= (int)sizeof path)
+      return -1;
+    int fd = open(path,
+                  O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW
+                    | O_NONBLOCK,
+                  0600);
+    if (fd >= 0 || errno != EEXIST) return fd;
+  }
+  return -1;
+}
+
 void caml_patchprof_init(void)
 {
   if (!caml_patchprof_stub_arena_present) return;
@@ -1238,7 +1291,7 @@ void caml_patchprof_init(void)
   dump_disabled = caml_secure_getenv(T("OCAML_PATCHPROF_NO_DUMP")) != NULL;
   if (read_seed() != 0)
     caml_fatal_error(
-      "patchprof: OCAML_PATCHPROF_SEED must be set to an unsigned integer");
+      "patchprof: OCAML_PATCHPROF_SEED must be an unsigned integer");
   if (read_rotation_period() != 0)
     caml_fatal_error(
       "patchprof: OCAML_PATCHPROF_ROTATE_MS must be an unsigned integer");
@@ -1248,10 +1301,7 @@ void caml_patchprof_init(void)
      read N0 and selected the sites. */
   caml_patchprof_init_domain(Caml_state);
 
-  profile_fd =
-    open(output,
-         O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK,
-         0600);
+  profile_fd = open_profile(output);
   struct stat output_stat;
   if (profile_fd < 0
       || fstat(profile_fd, &output_stat) != 0
