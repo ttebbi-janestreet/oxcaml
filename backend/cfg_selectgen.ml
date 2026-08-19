@@ -1058,9 +1058,9 @@ module Make (Target : Cfg_selectgen_target_intf.S) = struct
         Switch (Array.map (fun idx -> Sub_cfg.start_label subs.(idx)) index)
       in
       (* The debug info is set on the terminator only when it carries branch
-         provenance, keeping the default behavior otherwise.  A [Switch] has
-         no conditional branches itself, but terminator simplification may
-         turn small switches into int tests. *)
+         provenance, keeping the default behavior otherwise. A [Switch] has no
+         conditional branches itself, but terminator simplification may turn
+         small switches into int tests. *)
       (match Debuginfo.edge_labels dbg with
       | None -> Sub_cfg.update_exit_terminator sub_cfg term_desc ~arg:rsel
       | Some _ ->

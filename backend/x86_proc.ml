@@ -431,8 +431,8 @@ let label_instruction_pairs ~from_pos ~to_pos ~is_first =
   (* Track the CFA offset from the CFI directives, which mirror the emitter's
      own stack bookkeeping exactly (including the directive-only adjustment
      after path-local epilogues and the remember/restore pair around
-     stack-switching C calls).  At any point, the return address of the
-     current frame lives at [rsp + cfa - 8]. *)
+     stack-switching C calls). At any point, the return address of the current
+     frame lives at [rsp + cfa - 8]. *)
   let cfa = ref (Some 8) in
   let saved_cfa = ref [] in
   let track line =

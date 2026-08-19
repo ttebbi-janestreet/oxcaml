@@ -2,8 +2,8 @@
 
 # Checks the binary profile written by the patchprof_rotate.ml test.  Run
 # by ocamltest, which executes the [script] command without a shell, hence
-# this file.  $1 is the test source directory, four levels below the
-# repository root.  The test rotates the instrumented window every
+# this file.  This script lives in the test source directory, four levels
+# below the repository root.  The test rotates the instrumented window every
 # millisecond from minor-GC stop-the-world sections, so the summary must
 # report several distinct selections, and sampling must have worked across
 # rotations.
@@ -14,7 +14,7 @@
 unset OCAML_PATCHPROF_OUT OCAML_PATCHPROF_SEED OCAML_PATCHPROF_D \
       OCAML_PATCHPROF_N0 OCAML_PATCHPROF_ROTATE_MS
 
-root=$(cd "$1/../../../.." && pwd)
+root=$(cd "$(dirname "$0")/../../../.." && pwd)
 summary="${root}/_build/main/tools/patchprof_summary.exe"
 
 if "${summary}" -exe ./patchprof_rotate.opt patchprof_rotate.profile \

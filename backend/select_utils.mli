@@ -181,10 +181,10 @@ val int_test_of_integer_comparison :
   label_true:Label.t ->
   Cfg.int_test
 
-(** Permute the [ifso]/[ifnot] branch provenance masks of a conditional's
-    debug info into the successor positions of the terminator that
-    [terminator_of_test] builds for [test]; [None] when the debug info
-    carries no provenance. *)
+(** Permute the [ifso]/[ifnot] branch provenance masks of a conditional's debug
+    info into the successor positions of the terminator that
+    [terminator_of_test] builds for [test]; [None] when the debug info carries
+    no provenance. *)
 val edge_labels_dbg_of_test :
   Operation.test -> Debuginfo.t -> Debuginfo.t option
 

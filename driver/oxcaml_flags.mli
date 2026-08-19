@@ -154,6 +154,11 @@ val llvm_flags : string ref
 
 val fdo_profile_path : string option ref
 
+(** How {!fdo_profile} loads the profile named by [fdo_profile_path]. Defaults
+    to {!Source_position_profile.load}; drivers with access to [Unix] replace
+    it with a loader that memory-maps the file. *)
+val fdo_profile_loader : (filename:string -> Source_position_profile.t) ref
+
 (** The source-position FDO profile named by [-fdo-profile], loaded once on
     first call (or [None] if the flag is unset). Raises
     {!Source_position_profile.Error} if the profile is malformed. *)

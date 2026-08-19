@@ -13,7 +13,10 @@ cfg for camlHot_cold__cold_1_4_code
   block 128: measured 0, repaired 100
   block 130: measured 0, repaired 0 -> cold
   block 133: measured 100 from hot_cold.ml:12:7, repaired 100
-  function: max count 100, section .text.sorted.57.caml
+  function: max count 100, section .text.hot.caml
+  edge 1 -> 128: 100
+  edge 128 -> 133: 100
+  chain: 1 128 133
 cfg for camlHot_cold__f_2_5_code
   block 1
   block 128
@@ -22,6 +25,6 @@ cfg for camlHot_cold__f_2_5_code
 *** FDO block frequencies for camlHot_cold__entry: no samples
 cfg for camlHot_cold__entry
   block 1
-  block 142
-  block 144
   block 145
+  block 147
+  block 148

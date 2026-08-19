@@ -1391,7 +1391,6 @@ module type Oxcaml_options = sig
   val caml_apply_inline_fast_path : unit -> unit
   val internal_assembler : unit -> unit
   val patchprof : unit -> unit
-
   val no_patchprof : unit -> unit
   val verify_binary_emitter : unit -> unit
   val dissector : unit -> unit
@@ -2037,13 +2036,12 @@ module Oxcaml_options_impl = struct
     then Misc.fatal_error "-patchprof is only supported on Linux/amd64";
     (* The return-address offsets in the patchprof metadata are recovered
        from the CFI directives. *)
-    if not Config.asm_cfi_supported
-    then Misc.fatal_error "-patchprof requires CFI directive support";
+    if not Config.asm_cfi_supported then
+      Misc.fatal_error "-patchprof requires CFI directive support";
     Oxcaml_flags.patchprof := true;
     Oxcaml_flags.patchprof_explicit := true
 
   let no_patchprof () = Oxcaml_flags.patchprof := false
-
   let verify_binary_emitter = set' Oxcaml_flags.verify_binary_emitter
   let dissector = set' Clflags.dissector
   let dissector_partition_size = set_dissector_partition_size

@@ -94,7 +94,7 @@ let with_temp_file f =
 let () =
   with_temp_file (fun filename ->
       P.Writer.write (make_writer ()) ~filename ~buildid:(Some "abc123")
-        ~total_samples:22L ~debug_map:true;
+        ~total_samples:22L ~kind:P.Instructions ~debug_map:true;
       let p = P.load ~filename in
       check "buildid" (Option.equal String.equal (P.buildid p) (Some "abc123"));
       check "total_samples" (Int64.equal (P.total_samples p) 22L);
@@ -115,7 +115,7 @@ let () =
 let () =
   with_temp_file (fun filename ->
       P.Writer.write (make_writer ()) ~filename ~buildid:None ~total_samples:22L
-        ~debug_map:false;
+        ~kind:P.Instructions ~debug_map:false;
       let p = P.load ~filename in
       check "no buildid" (Option.is_none (P.buildid p));
       check_queries "no debug map" p;
@@ -125,7 +125,7 @@ let () =
 let () =
   let p =
     P.Writer.to_profile (make_writer ()) ~buildid:None ~total_samples:22L
-      ~debug_map:true
+      ~kind:P.Instructions ~debug_map:true
   in
   check_queries "in-memory profile" p;
   check "in-memory debug map"
@@ -133,10 +133,30 @@ let () =
        (P.position_of_hash p (P.hash_frame ctx_b))
        (Some ctx_b))
 
+(* [of_bigstring]: the memory-mapped read path, exercised on an in-memory
+   buffer. *)
+let () =
+  with_temp_file (fun filename ->
+      P.Writer.write (make_writer ()) ~filename ~buildid:(Some "abc123")
+        ~total_samples:22L ~kind:P.Instructions ~debug_map:true;
+      let contents = In_channel.with_open_bin filename In_channel.input_all in
+      let data =
+        Bigarray.Array1.init Bigarray.char Bigarray.c_layout
+          (String.length contents) (fun i -> contents.[i])
+      in
+      let p = P.of_bigstring ~filename data in
+      check "bigstring buildid"
+        (Option.equal String.equal (P.buildid p) (Some "abc123"));
+      check_queries "bigstring round-trip" p;
+      check "bigstring debug map"
+        (Option.equal String.equal
+           (P.position_of_hash p (P.hash_frame leaf_a))
+           (Some leaf_a)))
+
 let () =
   with_temp_file (fun filename ->
       P.Writer.write (P.Writer.create ()) ~filename ~buildid:None
-        ~total_samples:0L ~debug_map:false;
+        ~total_samples:0L ~kind:P.Instructions ~debug_map:false;
       let p = P.load ~filename in
       check "empty profile total" (Int64.equal (P.total_samples p) 0L);
       check_count "empty profile query"
@@ -165,7 +185,7 @@ let () =
   in
   let p =
     P.Writer.to_profile (make_writer ()) ~buildid:None ~total_samples:22L
-      ~debug_map:false
+      ~kind:P.Instructions ~debug_map:false
   in
   let dbg_a = debuginfo ~file:"a.ml" ~line:1 ~col:0 in
   let dbg_b = debuginfo ~file:"b.ml" ~line:2 ~col:3 in
@@ -178,6 +198,95 @@ let () =
     (Some 5L);
   check_count "empty debuginfo" (P.count_for_debuginfo p Debuginfo.none) None
 
+(* Pseudo-instrumentation label counts. *)
+let () =
+  let make_writer () =
+    let w = make_writer () in
+    (* The branch with discriminator 3, created at [leaf_a]: its edge 0 was
+       recorded in two contexts (once inlined at [ctx_b]). *)
+    P.Writer.add_label w ~frames:[leaf_a] ~disc:3 ~edge:0 ~count:40L
+      ~max_depth:16;
+    P.Writer.add_label w ~frames:[leaf_a] ~disc:3 ~edge:1 ~count:20L
+      ~max_depth:16;
+    P.Writer.add_label w ~frames:[leaf_a; ctx_b] ~disc:3 ~edge:0 ~count:10L
+      ~max_depth:16;
+    (* A second branch at the same position. *)
+    P.Writer.add_label w ~frames:[leaf_a] ~disc:4 ~edge:2 ~count:7L
+      ~max_depth:16;
+    w
+  in
+  let check_label name actual expected =
+    let to_string = function
+      | None -> "None"
+      | Some count -> Printf.sprintf "Some %Ld" count
+    in
+    if not (Option.equal Int64.equal actual expected)
+    then (
+      incr failures;
+      Printf.eprintf "FAILED: %s: got %s, expected %s\n%!" name
+        (to_string actual) (to_string expected))
+  in
+  let check_queries name p =
+    let check_label subname actual expected =
+      check_label (name ^ ": " ^ subname) actual expected
+    in
+    check_label "root entry aggregates all contexts"
+      (P.label_count_for_frames p ~frames:[leaf_a] ~disc:3 ~edge:0)
+      (Some 50L);
+    check_label "the other edge"
+      (P.label_count_for_frames p ~frames:[leaf_a] ~disc:3 ~edge:1)
+      (Some 20L);
+    check_label "context refines the entry"
+      (P.label_count_for_frames p ~frames:[leaf_a; ctx_b] ~disc:3 ~edge:0)
+      (Some 10L);
+    check_label "deeper than recorded falls back to the aggregate"
+      (P.label_count_for_frames p ~frames:[leaf_a; ctx_b; ctx_d] ~disc:3 ~edge:0)
+      (Some 10L);
+    check_label "unrecorded edge"
+      (P.label_count_for_frames p ~frames:[leaf_a] ~disc:3 ~edge:9)
+      None;
+    check_label "unrecorded discriminator"
+      (P.label_count_for_frames p ~frames:[leaf_a] ~disc:7 ~edge:0)
+      None;
+    check_label "unrecorded position"
+      (P.label_count_for_frames p ~frames:["z.ml:1:0"] ~disc:3 ~edge:0)
+      None;
+    check_label "empty stack"
+      (P.label_count_for_frames p ~frames:[] ~disc:3 ~edge:0)
+      None;
+    check "edge enumeration in edge order"
+      (match P.label_counts_for_frames p ~frames:[leaf_a] ~disc:3 with
+      | [(0, 50L); (1, 20L)] -> true
+      | _ -> false);
+    check "edge enumeration of the second branch"
+      (match P.label_counts_for_frames p ~frames:[leaf_a] ~disc:4 with
+      | [(2, 7L)] -> true
+      | _ -> false);
+    check "edge enumeration of an unrecorded discriminator"
+      (List.is_empty (P.label_counts_for_frames p ~frames:[leaf_a] ~disc:7));
+    check "branch profile kind"
+      (match P.kind p with P.Branches -> true | P.Instructions -> false)
+  in
+  check "hash-based label adds hit the same trie nodes"
+    (let w = make_writer () in
+     P.Writer.add_label_hashes w
+       ~frame_hashes:[P.hash_frame leaf_a; P.hash_frame ctx_b]
+       ~disc:3 ~edge:0 ~count:5L ~max_depth:16;
+     let p =
+       P.Writer.to_profile w ~buildid:None ~total_samples:22L ~kind:P.Branches
+         ~debug_map:false
+     in
+     Option.equal Int64.equal
+       (P.label_count_for_frames p ~frames:[leaf_a; ctx_b] ~disc:3 ~edge:0)
+       (Some 15L));
+  check_queries "in-memory labels"
+    (P.Writer.to_profile (make_writer ()) ~buildid:None ~total_samples:22L
+       ~kind:P.Branches ~debug_map:false);
+  with_temp_file (fun filename ->
+      P.Writer.write (make_writer ()) ~filename ~buildid:None ~total_samples:22L
+        ~kind:P.Branches ~debug_map:false;
+      check_queries "labels round-trip" (P.load ~filename))
+
 (* Strict validation of malformed files. *)
 let () =
   let read_file filename =
@@ -187,11 +296,18 @@ let () =
     Out_channel.with_open_bin filename (fun oc ->
         Out_channel.output_string oc contents)
   in
+  (* Validation is lazy: loading only checks the header and the root index, so a
+     malformed trie may only be rejected once it is read. A full [iter] reads
+     (and validates) everything. *)
   let expect_error name contents =
     with_temp_file (fun filename ->
         write_file filename contents;
-        match P.load ~filename with
-        | (_ : P.t) ->
+        match
+          let p = P.load ~filename in
+          P.iter p ~f:(fun ~hash:_ ~depth:_ ~count:_ ~labels:_ -> ());
+          ignore (P.position_of_hash p 0L)
+        with
+        | () ->
           incr failures;
           Printf.eprintf "FAILED: %s: no error raised\n%!" name
         | exception P.Error _ -> ())
@@ -199,7 +315,7 @@ let () =
   let good =
     with_temp_file (fun filename ->
         P.Writer.write (make_writer ()) ~filename ~buildid:(Some "abc123")
-          ~total_samples:22L ~debug_map:true;
+          ~total_samples:22L ~kind:P.Instructions ~debug_map:true;
         read_file filename)
   in
   let magic_len = String.length P.magic_number in

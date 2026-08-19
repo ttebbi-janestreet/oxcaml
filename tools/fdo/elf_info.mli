@@ -10,3 +10,6 @@ val is_pie : t -> bool
 
 (** The GNU build id, as a hex string, if present. *)
 val buildid : t -> string option
+
+(** The raw contents of the named section, if present. *)
+val section_body : t -> string -> string option

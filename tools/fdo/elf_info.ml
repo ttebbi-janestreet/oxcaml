@@ -8,7 +8,9 @@ module Owee_elf = Compiler_owee.Owee_elf
 
 type t =
   { e_type : int;
-    buildid : string option
+    buildid : string option;
+    buffer : Owee_buf.t;
+    sections : Owee_elf.section array
   }
 
 let et_dyn = 3
@@ -39,9 +41,31 @@ let read_buildid buffer sections =
     then Some (hex_string (Owee_buf.Read.fixed_string cursor descsz))
     else None
 
+(* Eta-expansion gives [create_process] and [waitpid] the unannotated types
+   required by [Compiler_owee.Unix_intf.S]. *)
+module Unix_for_owee = struct
+  include Unix
+
+  let create_process prog args stdin stdout stderr =
+    Unix.create_process prog args stdin stdout stderr
+
+  let waitpid flags pid = Unix.waitpid flags pid
+end
+
 let read filename =
   let buffer =
-    Owee_buf.map_binary (module Unix : Compiler_owee.Unix_intf.S) filename
+    Owee_buf.map_binary
+      (module Unix_for_owee : Compiler_owee.Unix_intf.S)
+      filename
   in
   let header, sections = Owee_elf.read_elf buffer in
-  { e_type = header.e_type; buildid = read_buildid buffer sections }
+  { e_type = header.e_type;
+    buildid = read_buildid buffer sections;
+    buffer;
+    sections
+  }
+
+let section_body t name =
+  Option.map
+    (Owee_elf.section_body_string t.buffer)
+    (Owee_elf.find_section t.sections name)

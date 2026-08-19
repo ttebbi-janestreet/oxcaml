@@ -466,9 +466,9 @@ let int_test_of_integer_comparison :
    [int_test_of_integer_comparison] and [terminator_of_test]: given branch
    provenance whose masks describe the [ifso] and [ifnot] successors of a
    two-way conditional, produce the provenance whose masks describe the
-   successor positions of the terminator built for [test].  [None] when the
-   debug info carries no provenance.  Must be kept in sync with the
-   functions above and below. *)
+   successor positions of the terminator built for [test]. [None] when the debug
+   info carries no provenance. Must be kept in sync with the functions above and
+   below. *)
 let edge_labels_dbg_of_test (test : Operation.test) dbg : Debuginfo.t option =
   match Debuginfo.edge_labels dbg with
   | None | Some (Debuginfo.Resolved _) -> None
@@ -508,8 +508,8 @@ let edge_labels_dbg_of_test (test : Operation.test) dbg : Debuginfo.t option =
         | Ioddtest -> [| ifnot; ifso |]
         | Ieventest -> [| ifso; ifnot |])
       | _ ->
-        (* Not a two-way conditional (e.g. a many-armed switch): the label
-           sets cannot be distributed here. *)
+        (* Not a two-way conditional (e.g. a many-armed switch): the label sets
+           cannot be distributed here. *)
         [||]
     in
     Some (Debuginfo.with_edge_labels dbg (Debuginfo.Positional sets))

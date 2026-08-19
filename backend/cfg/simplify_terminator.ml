@@ -31,10 +31,10 @@ module Dll = Doubly_linked_list
 
 (* Convert simple [Switch] to branches. *)
 
-(* When the switch carries pseudo-instrumentation labels (one set per
-   scrutinee value, like its label array), move them onto the successors of
-   the int test replacing it: each successor covers a run of values and
-   carries the union of their label sets. *)
+(* When the switch carries pseudo-instrumentation labels (one set per scrutinee
+   value, like its label array), move them onto the successors of the int test
+   replacing it: each successor covers a run of values and carries the union of
+   their label sets. *)
 let switch_edge_labels (block : C.basic_block) ~len ~runs =
   match Debuginfo.edge_labels block.terminator.dbg with
   | None | Some (Debuginfo.Resolved _) -> block.terminator.dbg

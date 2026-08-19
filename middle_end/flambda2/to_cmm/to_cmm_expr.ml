@@ -1311,9 +1311,9 @@ and switch env res switch =
         Env.add_inlined_debuginfo env (Apply_cont.debuginfo action) ),
       res )
   in
-  (* For a two-armed switch lowered to an if-then-else, rearrange the
-     per-value edge label sets (if any) into the [then]/[else] positions of
-     the conditional. *)
+  (* For a two-armed switch lowered to an if-then-else, rearrange the per-value
+     edge label sets (if any) into the [then]/[else] positions of the
+     conditional. *)
   let ite_edge_labels_dbg dbg ~then_original ~else_original =
     match Debuginfo.edge_labels dbg with
     | Some (Positional sets) ->
@@ -1390,9 +1390,9 @@ and switch env res switch =
     let m = prepare_discriminant ~must_tag:must_tag_discriminant max_d in
     let cases = Array.make (n + 1) None in
     let index = Array.make (m + 1) n in
-    (* Rearrange the per-value edge label sets (if any) so that they are
-       indexed like [index]: by the (possibly tagged) discriminant the
-       emitted switch scrutinizes. *)
+    (* Rearrange the per-value edge label sets (if any) so that they are indexed
+       like [index]: by the (possibly tagged) discriminant the emitted switch
+       scrutinizes. *)
     let reindexed_label_sets =
       match Debuginfo.edge_labels dbg with
       | Some (Positional sets) ->
@@ -1403,8 +1403,7 @@ and switch env res switch =
               prepare_discriminant ~must_tag:false discriminant
             in
             let d =
-              prepare_discriminant ~must_tag:must_tag_discriminant
-                discriminant
+              prepare_discriminant ~must_tag:must_tag_discriminant discriminant
             in
             if original_d >= 0 && original_d < Array.length sets
             then reindexed.(d) <- sets.(original_d))
@@ -1420,8 +1419,12 @@ and switch env res switch =
     let _, res, free_vars, symbol_inits =
       Target_ocaml_int.Map.fold
         (fun discriminant action (i, res, free_vars, symbol_inits) ->
-          let ( (d, _original_d, cmm_action, action_free_vars,
-                  action_symbol_inits, _dbg),
+          let ( ( d,
+                  _original_d,
+                  cmm_action,
+                  action_free_vars,
+                  action_symbol_inits,
+                  _dbg ),
                 res ) =
             make_arm ~must_tag_discriminant env res (discriminant, action)
           in

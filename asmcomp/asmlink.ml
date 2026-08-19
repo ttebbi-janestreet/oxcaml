@@ -309,8 +309,8 @@ let call_linker ?dissector_args file_list_rev startup_file output_name =
     then Ccomp.Partial
     else Ccomp.Exe
   in
-  (* The default-enabled flag yields silently to links that patchprof does
-     not support; an explicit [-patchprof] turns them into errors. *)
+  (* The default-enabled flag yields silently to links that patchprof does not
+     support; an explicit [-patchprof] turns them into errors. *)
   let patchprof_link_problem () =
     if mode <> Ccomp.Exe
     then Some "-patchprof only supports executable links"
@@ -323,8 +323,8 @@ let call_linker ?dissector_args file_list_rev startup_file output_name =
     then Some "-patchprof is only supported on Linux/amd64"
     else
       (* The stub arena object is only part of the static runtime archives
-         (libasmrun, libasmrund, libasmruni), so other runtime variants such
-         as [_pic] would fail with an undefined reference to
+         (libasmrun, libasmrund, libasmruni), so other runtime variants such as
+         [_pic] would fail with an undefined reference to
          [caml_patchprof_stub_arena_force_link]. Reject them up front. *)
       match !Clflags.runtime_variant with
       | "" | "nnp" | "d" | "i" -> None

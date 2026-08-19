@@ -1927,16 +1927,26 @@ let close_apply_cont acc env ~dbg cont trap_action args : Expr_with_acc.t =
 
 (* Pseudo-instrumentation labels are consumed together with patchprof
    profiles, so they are created exactly when compiling for patchprof. *)
-let branch_labels_enabled () = Oxcaml_flags.patchprof_enabled ()
+(* The labels are needed both to produce a patchprof profile (they name the
+   branch edges the counts are recorded against) and to consume one (the
+   profile's counts are matched back against them), so compiling with
+   [-fdo-profile] enables them even where the instrumentation itself is
+   unavailable (say, under [-function-sections], which patchprof cannot
+   support): the labels are debug-info metadata and do not constrain the
+   section layout. *)
+let branch_labels_enabled () =
+  Oxcaml_flags.patchprof_enabled ()
+  || Option.is_some !Oxcaml_flags.fdo_profile_path
 
-(* Attach fresh pseudo-instrumentation labels for a switch about to be
-   created: the positional array is indexed by scrutinee value (so that it
-   stays meaningful when later simplification deletes arms), and the edge
+(* Attach fresh pseudo-instrumentation labels for a switch about to be created:
+   the positional array is indexed by scrutinee value (so that it stays
+   meaningful when later simplification deletes arms), and the edge
    discriminator of each label is the value itself. *)
 let attach_branch_labels condition_dbg ~num_values =
-  if (not (branch_labels_enabled ()))
-     || num_values <= 0
-     || List.compare_length_with (Debuginfo.to_items condition_dbg) 0 = 0
+  if
+    (not (branch_labels_enabled ()))
+    || num_values <= 0
+    || List.compare_length_with (Debuginfo.to_items condition_dbg) 0 = 0
   then condition_dbg
   else
     Debuginfo.with_edge_labels condition_dbg

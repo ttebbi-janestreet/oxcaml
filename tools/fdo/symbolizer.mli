@@ -4,16 +4,16 @@
 type frame =
   { file : string;  (** as recorded in the DWARF line table, verbatim *)
     line : int;
-    col : int
+    col : int;
+    discriminator : int
+        (** the DWARF discriminator of the line-table entry, 0 when absent.
+            Branch provenance is encoded here; see the branch contract in
+            [Source_position_profile]. *)
   }
 
-(** Parse a "file:line:col" location (splitting from the right, so the file may
-    contain colons). Raises [Failure] on anything else. Exposed for testing. *)
-val parse_location : string -> frame
-
-(** Parse llvm-symbolizer --inlines --output-style=LLVM output lines into one
-    leaf-first stack per queried address; an empty stack is an address the
-    symbolizer knows nothing about. Exposed for testing. *)
+(** Parse llvm-symbolizer --inlines --verbose output into one leaf-first stack
+    per queried address; an empty stack is an address the symbolizer knows
+    nothing about. Exposed for testing. *)
 val parse_output : string list -> frame list list
 
 (** [symbolize ~symbolizer ~binary ~addrs] is the leaf-first inlining stack of

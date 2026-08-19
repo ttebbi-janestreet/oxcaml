@@ -207,14 +207,20 @@ let llvm_flags = ref "" (* -llvm-flags *)
 
 let fdo_profile_path = ref None (* -fdo-profile *)
 
+(* How to load the profile. The native driver replaces this with a loader that
+   memory-maps the file, so that queries touch only the pages they need;
+   mapping needs [Unix], which is not available here. *)
+let fdo_profile_loader :
+    (filename:string -> Source_position_profile.t) ref =
+  ref (fun ~filename -> Source_position_profile.load ~filename)
+
 (* The profile is loaded once, on first use, from [fdo_profile_path] (which is
    set during argument parsing, before this is forced). Held here so that any
    compiler phase can consult it. Loading raises if the profile is malformed,
    surfacing broken feedback-directed optimization loudly. *)
 let fdo_profile_lazy =
   lazy
-    (Option.map
-       (fun filename -> Source_position_profile.load ~filename)
+    (Option.map (fun filename -> !fdo_profile_loader ~filename)
        !fdo_profile_path)
 
 let fdo_profile () = Lazy.force fdo_profile_lazy

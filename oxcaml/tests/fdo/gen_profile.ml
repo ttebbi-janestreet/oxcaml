@@ -27,7 +27,7 @@ let () =
         in
         loop ());
     Source_position_profile.Writer.write w ~filename:output ~buildid:None
-      ~total_samples:!total ~debug_map:true
+      ~total_samples:!total ~kind:Instructions ~debug_map:true
   | _ ->
     prerr_endline "usage: gen_profile <input.txt> <output.fdo>";
     exit 2

@@ -32,8 +32,8 @@ let mk_switch ~loc ~cond ~ifso ~ifnot ~kind =
     }
   in
   (* [cond] may carry no location itself (e.g. a bare variable); fall back to
-     the location of the condition the caller started from, so that debug
-     info on the branch (in particular branch provenance) is not lost. *)
+     the location of the condition the caller started from, so that debug info
+     on the branch (in particular branch provenance) is not lost. *)
   let loc =
     match[@warning "-4"] L.try_to_find_location cond with
     | Debuginfo.Scoped_location.Loc_unknown -> loc

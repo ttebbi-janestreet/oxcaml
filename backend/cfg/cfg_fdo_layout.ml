@@ -3,13 +3,14 @@
 open! Int_replace_polymorphic_compare
 module DLL = Doubly_linked_list
 
-(* A block's measured execution count is the maximum estimate over its
-   instructions (body and terminator): instructions inlined from elsewhere or
-   sharing a line can carry different counts, and the largest one reflects how
-   often control actually reaches the block. Blocks about which the profile
-   knows nothing start at 0 and rely on the frequency repair below. Also returns
-   the debug info of the instruction the count came from, for [-dfdo]. *)
-let block_count profile (block : Cfg.basic_block) =
+(* For a profile of instruction samples, a block's measured execution count is
+   the maximum estimate over its instructions (body and terminator):
+   instructions inlined from elsewhere or sharing a line can carry different
+   counts, and the largest one reflects how often control actually reaches the
+   block. Blocks about which the profile knows nothing start at 0 and rely on
+   the frequency repair below. Also returns the debug info of the instruction
+   the count came from, for [-dfdo]. *)
+let block_count_from_instructions profile (block : Cfg.basic_block) =
   let best = ref 0L in
   let origin = ref Debuginfo.none in
   let update (instr : _ Cfg.instruction) =
@@ -24,6 +25,29 @@ let block_count profile (block : Cfg.basic_block) =
   DLL.iter block.body ~f:update;
   update block.terminator;
   !best, !origin
+
+(* A profile of branch executions only counted conditional branches, so only a
+   conditional terminator's position may consult it: a body instruction that
+   happens to share the branch's source position would otherwise soak up the
+   branch's count. (A three-way integer test emits two branches at one position;
+   their counts add up here, overestimating the block by up to 2x until the
+   terminator-level edge counts are consumed directly.) *)
+let block_count_from_branches profile (block : Cfg.basic_block) =
+  let terminator = block.terminator in
+  match[@warning "-4"] terminator.desc with
+  | Cfg.Parity_test _ | Cfg.Truth_test _ | Cfg.Float_test _ | Cfg.Int_test _
+    -> (
+    match
+      Source_position_profile.count_for_debuginfo profile terminator.dbg
+    with
+    | Some count -> count, terminator.dbg
+    | None -> 0L, Debuginfo.none)
+  | _ -> 0L, Debuginfo.none
+
+let block_count profile block =
+  match Source_position_profile.kind profile with
+  | Instructions -> block_count_from_instructions profile block
+  | Branches -> block_count_from_branches profile block
 
 (* Sampling only measures blocks whose instructions have source positions that
    were actually hit; compiler-generated blocks (e.g. a division's zero-check)
@@ -137,25 +161,27 @@ let dump_frequencies ppf cfg_with_layout ~measured ~origins ~repaired =
       Format.fprintf ppf ", repaired %Ld%s@." r
         (if Int64.equal r 0L then " -> cold" else ""))
 
-(* Functions are placed into one text section per hotness class: the class is
-   the base-2 order of magnitude of the function's hottest block, encoded so
-   that hotter classes sort lexicographically first. The default GNU ld linker
-   script sorts ".text.sorted.*" input sections by name, which groups all
-   functions of a class together (dense hot pages) and orders the classes, with
-   no linker script involvement. Functions without samples are left in their
-   usual sections. *)
-let section_for_count fun_count =
-  let log2 =
-    let rec loop count acc =
-      if Int64.compare count 1L <= 0
-      then acc
-      else loop (Int64.shift_right_logical count 1) (acc + 1)
-    in
-    loop fun_count 0
-  in
-  Printf.sprintf ".text.sorted.%02d.caml" (63 - log2)
+(* Functions whose hottest block accounts for at least this fraction of the
+   whole profile's ticks are placed into one shared hot text section, which
+   the default GNU ld linker script groups ahead of ".text" (via its
+   ".text.hot*" input section rule), so the truly hot functions share a few
+   dense pages with no linker script involvement. Everything else is left in
+   its usual section: a single coarse class with a relative threshold keeps
+   the hot region small, which matters because position-keyed counts
+   overestimate duplicated code (e.g. functor copies share their source
+   positions), and because relocating merely warm functions away from their
+   home modules costs iTLB locality without buying instruction locality. *)
+let hot_section_min_fraction = 0.001
 
-let assign_function_section ~dump cfg_with_layout counts =
+let hot_section_name = ".text.hot.caml"
+
+(* Temporary experiment knob: disable only the hot-function section
+   assignment (keeping the block reordering) to isolate its performance
+   effects. CR ttebbi: remove after the experiments conclude. *)
+let section_sort_disabled =
+  lazy (Option.is_some (Sys.getenv_opt "OXCAML_FDO_NO_SECTION_SORT"))
+
+let assign_function_section ~dump profile cfg_with_layout counts =
   let cfg = Cfg_with_layout.cfg cfg_with_layout in
   let fun_count =
     Label.Tbl.fold
@@ -163,19 +189,25 @@ let assign_function_section ~dump cfg_with_layout counts =
         if Int64.compare count acc > 0 then count else acc)
       counts 0L
   in
+  let threshold =
+    Int64.of_float
+      (Int64.to_float (Source_position_profile.total_samples profile)
+      *. hot_section_min_fraction)
+    |> Int64.max 1L
+  in
   let section =
     (* Named text sections are not supported on all targets (macOS, Windows);
        [Config.function_sections] tracks exactly that support.
        [-basic-block-sections] emits each function across sections of its own,
        which would override the placement, so leave that mode alone. *)
     if
-      Int64.compare fun_count 0L > 0
+      Int64.compare fun_count threshold >= 0
       && Config.function_sections
-      && not !Oxcaml_flags.basic_block_sections
+      && (not !Oxcaml_flags.basic_block_sections)
+      && not (Lazy.force section_sort_disabled)
     then (
-      let name = section_for_count fun_count in
-      cfg.fun_text_section <- Some name;
-      Some name)
+      cfg.fun_text_section <- Some hot_section_name;
+      Some hot_section_name)
     else None
   in
   Option.iter
@@ -184,7 +216,164 @@ let assign_function_section ~dump cfg_with_layout counts =
         (match section with Some name -> ", section " ^ name | None -> ""))
     dump
 
-let reorder_cold_blocks ~dump profile cfg_with_layout =
+(* The weights of a block's normal successor edges, in profile-count units.
+   Conditional and switch edges carrying pseudo-instrumentation labels whose
+   counts the profile recorded are measured directly: an edge's weight is the
+   sum of its labels' counts. A terminator none of whose labels was recorded
+   (not instrumented, or a profile without labels) falls back to the flow bound
+   [min (count src) (count dst)] per successor; single-successor control flow
+   carries the whole block count. *)
+let successor_edge_weights profile counts src (block : Cfg.basic_block) =
+  let count label = Label.Tbl.find counts label in
+  let src_count = count src in
+  let terminator = block.terminator in
+  (* The successor of each label-set position; must mirror the resolution in
+     [Cfg_to_linear.resolve_edge_labels] (and, for [Switch], the indexing of
+     [Simplify_terminator]). *)
+  let positions : Label.t array =
+    match[@warning "-4"] terminator.desc with
+    | Parity_test { ifso; ifnot } | Truth_test { ifso; ifnot } ->
+      [| ifso; ifnot |]
+    | Int_test { lt; eq; gt; is_signed = _; imm = _ } -> [| lt; eq; gt |]
+    | Float_test { lt; eq; gt; uo; width = _ } -> [| lt; eq; gt; uo |]
+    | Switch labels -> labels
+    | _ -> [||]
+  in
+  let measured =
+    match Debuginfo.edge_labels terminator.dbg with
+    | Some (Debuginfo.Positional sets)
+      when Array.length positions > 0
+           && Array.length sets = Array.length positions ->
+      (* Group the positions by successor, in first-occurrence order. *)
+      let edges : (Label.t * Debuginfo.branch_label list ref) list ref =
+        ref []
+      in
+      Array.iteri
+        (fun i dst ->
+          match List.find_opt (fun (d, _) -> Label.equal d dst) !edges with
+          | Some (_, labels) -> labels := sets.(i) @ !labels
+          | None -> edges := (dst, ref sets.(i)) :: !edges)
+        positions;
+      let any_measured = ref false in
+      let weights =
+        List.rev_map
+          (fun (dst, labels) ->
+            let weight =
+              List.fold_left
+                (fun acc label ->
+                  match
+                    Source_position_profile.count_for_branch_label profile label
+                  with
+                  | None -> acc
+                  | Some count ->
+                    any_measured := true;
+                    Int64.add acc count)
+                0L !labels
+            in
+            dst, weight)
+          !edges
+      in
+      if !any_measured then Some weights else None
+    | None | Some (Debuginfo.Positional _) | Some (Debuginfo.Resolved _) -> None
+  in
+  match measured with
+  | Some weights -> weights
+  | None -> (
+    match
+      Label.Set.elements (Cfg.successor_labels ~normal:true ~exn:false block)
+    with
+    | [dst] -> [dst, src_count]
+    | successors ->
+      List.map (fun dst -> dst, Int64.min src_count (count dst)) successors)
+
+(* Bottom-up chaining (à la Pettis-Hansen): every block starts as a chain of its
+   own; the edges are considered hottest first, and an edge whose source is some
+   chain's tail and whose destination is another chain's head concatenates the
+   two chains, making the edge a fallthrough. The chains are then laid out: the
+   entry block's chain first, the others in the original layout order of their
+   first-occurring blocks, and chains consisting only of cold blocks sunk to the
+   end (an edge only links blocks with positive counts, so this preserves the
+   cold-block sinking). *)
+type chain =
+  { mutable blocks : Label.t list; (* in layout order, never empty *)
+    head : Label.t; (* fixed: merging appends to the head chain *)
+    mutable tail : Label.t;
+    mutable cold : bool;
+    mutable visited : bool (* for ordering the finished chains *)
+  }
+
+let build_chains ~dump profile counts cfg_with_layout =
+  let cfg = Cfg_with_layout.cfg cfg_with_layout in
+  let layout = Cfg_with_layout.layout cfg_with_layout in
+  let chains = Label.Tbl.create (Label.Tbl.length cfg.blocks) in
+  DLL.iter layout ~f:(fun label ->
+      let cold = Int64.equal (Label.Tbl.find counts label) 0L in
+      Label.Tbl.replace chains label
+        { blocks = [label]; head = label; tail = label; cold; visited = false });
+  let edges = ref [] in
+  DLL.iter layout ~f:(fun src ->
+      let block = Cfg.get_block_exn cfg src in
+      List.iter
+        (fun (dst, weight) ->
+          (* The entry block can head no chain but its own, and a block cannot
+             fall through to itself. *)
+          if
+            Int64.compare weight 0L > 0
+            && (not (Label.equal dst cfg.entry_label))
+            && not (Label.equal src dst)
+          then edges := (src, dst, weight) :: !edges)
+        (successor_edge_weights profile counts src block));
+  (* Sorting is stable, so ties keep the original layout order and the result is
+     deterministic. *)
+  let edges =
+    List.stable_sort
+      (fun (_, _, weight1) (_, _, weight2) -> Int64.compare weight2 weight1)
+      (List.rev !edges)
+  in
+  Option.iter
+    (fun ppf ->
+      List.iter
+        (fun (src, dst, weight) ->
+          Format.fprintf ppf "  edge %a -> %a: %Ld@." Label.format src
+            Label.format dst weight)
+        edges)
+    dump;
+  List.iter
+    (fun (src, dst, _weight) ->
+      let chain = Label.Tbl.find chains src in
+      let successor_chain = Label.Tbl.find chains dst in
+      if
+        (not (chain == successor_chain))
+        && Label.equal chain.tail src
+        && Label.equal successor_chain.head dst
+      then (
+        chain.blocks <- chain.blocks @ successor_chain.blocks;
+        chain.tail <- successor_chain.tail;
+        chain.cold <- chain.cold && successor_chain.cold;
+        List.iter
+          (fun label -> Label.Tbl.replace chains label chain)
+          successor_chain.blocks))
+    edges;
+  (* The distinct chains, in the original layout order of their first-occurring
+     blocks. *)
+  let ordered = ref [] in
+  DLL.iter layout ~f:(fun label ->
+      let chain = Label.Tbl.find chains label in
+      if not chain.visited
+      then (
+        chain.visited <- true;
+        ordered := chain :: !ordered));
+  let entry_chain = Label.Tbl.find chains cfg.entry_label in
+  let hot, cold =
+    List.partition
+      (fun chain -> not chain.cold)
+      (List.filter
+         (fun chain -> not (chain == entry_chain))
+         (List.rev !ordered))
+  in
+  (entry_chain :: hot) @ cold
+
+let reorder_blocks ~dump profile cfg_with_layout =
   let cfg = Cfg_with_layout.cfg cfg_with_layout in
   let counts = Label.Tbl.create (Label.Tbl.length cfg.blocks) in
   let origins = Label.Tbl.create (Label.Tbl.length cfg.blocks) in
@@ -211,9 +400,31 @@ let reorder_cold_blocks ~dump profile cfg_with_layout =
       (fun ppf ->
         dump_frequencies ppf cfg_with_layout ~measured ~origins ~repaired:counts)
       dump;
-    assign_function_section ~dump cfg_with_layout measured;
-    let is_cold label = Int64.equal (Label.Tbl.find counts label) 0L in
+    assign_function_section ~dump profile cfg_with_layout measured;
+    let chains = build_chains ~dump profile counts cfg_with_layout in
+    Option.iter
+      (fun ppf ->
+        List.iter
+          (fun chain ->
+            match chain.blocks with
+            | [] | [_] -> ()
+            | blocks ->
+              Format.fprintf ppf "  chain:%s@."
+                (String.concat ""
+                   (List.map (Format.asprintf " %a" Label.format) blocks)))
+          chains)
+      dump;
+    let rank = Label.Tbl.create (Label.Tbl.length cfg.blocks) in
+    let next = ref 0 in
+    List.iter
+      (fun chain ->
+        List.iter
+          (fun label ->
+            Label.Tbl.replace rank label !next;
+            incr next)
+          chain.blocks)
+      chains;
     Cfg_with_layout.reorder_blocks
       ~comparator:(fun label1 label2 ->
-        Bool.compare (is_cold label1) (is_cold label2))
+        Int.compare (Label.Tbl.find rank label1) (Label.Tbl.find rank label2))
       cfg_with_layout

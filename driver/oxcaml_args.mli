@@ -99,7 +99,6 @@ module type Oxcaml_options = sig
   val caml_apply_inline_fast_path : unit -> unit
   val internal_assembler : unit -> unit
   val patchprof : unit -> unit
-
   val no_patchprof : unit -> unit
   val verify_binary_emitter : unit -> unit
   val dissector : unit -> unit

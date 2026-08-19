@@ -22,6 +22,26 @@ module Options = Oxcaml_args.Make_optcomp_options
 
 let main unix argv ppf ~flambda2 =
   native_code := true;
+  (* Memory-map FDO profiles: queries then fault in only the pages they touch,
+     where [Source_position_profile.load] would read the whole file on every
+     compiler invocation. [Unix] is only available here, not where the profile
+     is loaded ([Oxcaml_flags]). *)
+  (Oxcaml_flags.fdo_profile_loader :=
+     let module U = (val unix : Compiler_owee.Unix_intf.S) in
+     fun ~filename ->
+       match
+         let fd = U.openfile filename [U.O_RDONLY] 0 in
+         Fun.protect
+           ~finally:(fun () -> U.close fd)
+           (fun () ->
+              Bigarray.array1_of_genarray
+                (U.map_file fd Bigarray.char Bigarray.c_layout false [| -1 |]))
+       with
+       | data -> Source_position_profile.of_bigstring ~filename data
+       | exception _ ->
+         (* Mapping can legitimately fail (empty file, exotic filesystem);
+            reading the file then either succeeds or reports a proper error. *)
+         Source_position_profile.load ~filename);
   let columns =
     match Sys.getenv "COLUMNS" with
     | exception Not_found -> None

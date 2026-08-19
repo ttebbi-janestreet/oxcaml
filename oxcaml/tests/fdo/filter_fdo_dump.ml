@@ -11,7 +11,11 @@ let () =
        then (
          in_section := false;
          print_endline line)
-       else if String.starts_with ~prefix:"  block " line && not !in_section
+       else if
+         (String.starts_with ~prefix:"  block " line
+         || String.starts_with ~prefix:"  edge " line
+         || String.starts_with ~prefix:"  chain:" line)
+         && not !in_section
        then print_endline line
        else if String.starts_with ~prefix:"  function:" line
        then print_endline line

@@ -111,19 +111,18 @@ let cross_section cfg_with_layout src dst =
       Misc.fatal_errorf "Missing section for %a" Label.format src
   else false
 
-(* When the terminator carries pseudo-instrumentation labels, resolve for
-   each emitted conditional branch the label sets of its two machine edges
-   and store them on that instruction's debug info; the emitter pairs them
-   with the patchprof site metadata.  The taken edge collects the labels of
-   the successor positions that jump to the branch's target (several
-   positions may share a label set; the profile sums over machine edges, so
-   duplication is safe).  The machine fallthrough of a branch commits to a
-   successor only when the next control-flow instruction is not another
-   conditional branch: then it carries the labels of the position matching
-   the fallthrough destination (an explicit trailing jump, or the next block
-   in the layout); in the middle of a branch cascade it carries none.
-   [Lcondbranch3] keeps its positional sets: the emitter resolves its jumps
-   individually. *)
+(* When the terminator carries pseudo-instrumentation labels, resolve for each
+   emitted conditional branch the label sets of its two machine edges and store
+   them on that instruction's debug info; the emitter pairs them with the
+   patchprof site metadata. The taken edge collects the labels of the successor
+   positions that jump to the branch's target (several positions may share a
+   label set; the profile sums over machine edges, so duplication is safe). The
+   machine fallthrough of a branch commits to a successor only when the next
+   control-flow instruction is not another conditional branch: then it carries
+   the labels of the position matching the fallthrough destination (an explicit
+   trailing jump, or the next block in the layout); in the middle of a branch
+   cascade it carries none. [Lcondbranch3] keeps its positional sets: the
+   emitter resolves its jumps individually. *)
 let resolve_edge_labels (terminator : Cfg.terminator Cfg.instruction)
     (desc_list : L.instruction_desc list) ~(fallthrough_label : Label.t) :
     (L.instruction_desc * Debuginfo.t) list =
@@ -424,13 +423,13 @@ let linearize_terminator cfg_with_layout (func : string) start
     List.fold_left
       (fun next (desc, dbg) ->
         let instr = to_linear_instr desc ~next ~like:terminator in
-        let instr = { instr with L.dbg = dbg } in
+        let instr = { instr with L.dbg } in
         match has_epilogue with
         (* In order to match the debug info generated when the epilogue was not
            a linear instruction, we need to explicitly remove debug info, as
-           they were already added to Lepilogue_open.  Debug info carrying
-           edge labels is kept: the emitter reads it off the branch
-           instruction for the patchprof label metadata. *)
+           they were already added to Lepilogue_open. Debug info carrying edge
+           labels is kept: the emitter reads it off the branch instruction for
+           the patchprof label metadata. *)
         | true ->
           if Option.is_some (Debuginfo.edge_labels dbg)
           then instr
@@ -438,8 +437,7 @@ let linearize_terminator cfg_with_layout (func : string) start
         | false -> instr)
       next.insn
       (List.rev
-         (resolve_edge_labels terminator desc_list
-            ~fallthrough_label:next.label))
+         (resolve_edge_labels terminator desc_list ~fallthrough_label:next.label))
   in
   instr, tailrec_label
 

@@ -86,8 +86,8 @@ val output_range : from_pos:output_pos -> to_pos:output_pos -> asm_line list
     of each result is the byte offset from the stack pointer to the return
     address at that site (a multiple of 8), recovered from the CFI directives,
     or [None] if it could not be tracked. The last component is the output
-    position of the conditional branch, for pairing with information recorded
-    at emission time (see [same_output_pos]). *)
+    position of the conditional branch, for pairing with information recorded at
+    emission time (see [same_output_pos]). *)
 val label_instruction_pairs :
   from_pos:output_pos ->
   to_pos:output_pos ->

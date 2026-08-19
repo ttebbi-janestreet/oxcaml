@@ -359,7 +359,7 @@ let reorder_blocks ppf_dump cl =
     match Oxcaml_flags.fdo_profile () with
     | None -> cl
     | Some profile ->
-      Cfg_fdo_layout.reorder_cold_blocks
+      Cfg_fdo_layout.reorder_blocks
         ~dump:(if !Oxcaml_flags.dump_fdo then Some ppf_dump else None)
         profile cl;
       pass_dump_cfg_if ppf_dump Oxcaml_flags.dump_cfg "After cfg_fdo_layout" cl)

@@ -291,8 +291,8 @@ val between_labels_64_bit :
 val delta_uleb128 : upper:Asm_label.t -> lower:Asm_label.t -> unit
 
 (** Emit the packed flag-writer and conditional-branch lengths for one patchprof
-    site, together with the offset from the stack pointer to the return
-    address at the site, in 8-byte words ([0x7ff] meaning unknown). *)
+    site, together with the offset from the stack pointer to the return address
+    at the site, in 8-byte words ([0x7ff] meaning unknown). *)
 val patchprof_lengths :
   site:Asm_label.t ->
   jcc:Asm_label.t ->

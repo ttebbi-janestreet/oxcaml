@@ -1,6 +1,6 @@
-; The oxcaml-fdo-decode tool: decodes a Linux perf profile of an
-; OxCaml-compiled executable into a source-position FDO profile
-; (Source_position_profile) consumed by ocamlopt's -fdo-profile.
+; The oxcaml-fdo-decode tool: decodes a Linux perf profile (or a patchprof
+; profile) of an OxCaml-compiled executable into a source-position FDO
+; profile (Source_position_profile) consumed by ocamlopt's -fdo-profile.
 
 (library
  (name fdo_decode_lib)
@@ -8,7 +8,7 @@
  (flags
   (:standard -w +a-30-40-41-42))
  (libraries ocamlcommon compiler_owee unix)
- (modules perf_script symbolizer elf_info))
+ (modules perf_script patchprof_profile patchprof_labels symbolizer elf_info))
 
 (executable
  (name oxcaml_fdo_decode)

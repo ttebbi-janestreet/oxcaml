@@ -1,13 +1,13 @@
 (* TEST
  arch_amd64;
  linux;
- ocamlopt_flags = "-patchprof";
+ ocamlopt_flags = "-patchprof -g";
  set OCAML_PATCHPROF_OUT = "patchprof.profile";
  set OCAML_PATCHPROF_D = "2";
  set OCAML_PATCHPROF_N0 = "17";
  set OCAML_PATCHPROF_SEED = "1";
  native;
- script = "sh ${test_source_directory}/check-patchprof-profile.sh ${test_source_directory}";
+ script = "sh ${test_source_directory}/check-patchprof-profile.sh";
  script;
 *)
 

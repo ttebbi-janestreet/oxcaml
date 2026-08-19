@@ -8,7 +8,7 @@
  set OCAML_PATCHPROF_SEED = "1";
  set OCAML_PATCHPROF_ROTATE_MS = "1";
  native;
- script = "sh ${test_source_directory}/check-patchprof-rotate.sh ${test_source_directory}";
+ script = "sh ${test_source_directory}/check-patchprof-rotate.sh";
  script;
 *)
 
