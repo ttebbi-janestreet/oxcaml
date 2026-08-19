@@ -134,9 +134,19 @@ struct caml_patchprof_domain {
 /* The C part of the slow stub; defined in patchprof_sample.c, which is
    compiled so that the function preserves all registers.  [taken] is 0 or
    1; it comes before [index] because the slow stub materializes the
-   condition directly into the second argument register. */
-extern void caml_patchprof_sample(struct caml_patchprof_domain *domain,
-                                  uint64_t taken, uint64_t index);
+   condition directly into the second argument register.  The attribute
+   must be on the declaration as well: clang rejects declarations that
+   disagree about [no_caller_saved_registers].  It only exists on x86;
+   other targets don't run patched code and need no attribute. */
+#ifdef __x86_64__
+#define CAML_PATCHPROF_SAMPLE_ATTRIBUTES \
+  __attribute__((no_caller_saved_registers))
+#else
+#define CAML_PATCHPROF_SAMPLE_ATTRIBUTES
+#endif
+extern void CAML_PATCHPROF_SAMPLE_ATTRIBUTES
+caml_patchprof_sample(struct caml_patchprof_domain *domain,
+                      uint64_t taken, uint64_t index);
 
 Caml_inline uint32_t *caml_patchprof_countdowns(caml_domain_state *state)
 {

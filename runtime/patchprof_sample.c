@@ -79,9 +79,9 @@ frame_descr *next_frame_descriptor(caml_frame_descrs *fds,
    run on. */
 CAMLno_tsan
 CAMLno_asan
-__attribute__((no_caller_saved_registers))
-void caml_patchprof_sample(struct caml_patchprof_domain *domain,
-                           uint64_t taken, uint64_t index)
+void CAML_PATCHPROF_SAMPLE_ATTRIBUTES
+caml_patchprof_sample(struct caml_patchprof_domain *domain,
+                      uint64_t taken, uint64_t index)
 {
   /* The 32-bit countdowns saturate the exponential backoff: once the
      period reaches UINT32_MAX, sampling becomes periodic.  [totals] and
