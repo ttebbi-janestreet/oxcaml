@@ -225,7 +225,10 @@ DEFAULT_SAFE_STRING=true
 WINDOWS_UNICODE=@windows_unicode@
 AFL_INSTRUMENT=@afl@
 FLAT_FLOAT_ARRAY=@flat_float_array@
-FUNCTION_SECTIONS=@function_sections@
+# Function sections silently disable patchprof instrumentation of the
+# compiler's own binaries, so the compiler is built without them by default;
+# override with FUNCTION_SECTIONS=true.
+FUNCTION_SECTIONS=false
 OXCAML_DWARF_FLAGS_FOR_COMPILER=@oxcaml_dwarf_flags_for_compiler@
 ASSEMBLY_FLAG_FOR_COMPILER=@assembly_flag_for_compiler@
 PROBES=@probes@

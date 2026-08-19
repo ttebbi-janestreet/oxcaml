@@ -22,7 +22,13 @@
 #include "frame_descriptors.h"
 
 #define CAML_PATCHPROF_NUM_SITES 4096
-#define CAML_PATCHPROF_DEFAULT_SITE_STRIDE 50
+#define CAML_PATCHPROF_DEFAULT_SITE_STRIDE 4
+
+/* Rotation of the instrumented subset is on by default, so that even a
+   single long-running process converges on full coverage; the period is
+   long enough to make the ~6.5ms re-patching cost negligible.
+   [OCAML_PATCHPROF_ROTATE_MS] overrides it; 0 disables rotation. */
+#define CAML_PATCHPROF_DEFAULT_ROTATE_MS 6000
 #define CAML_PATCHPROF_INITIAL_COUNTDOWN 500
 #define CAML_PATCHPROF_BACKOFF_DENOMINATOR 50
 #define CAML_PATCHPROF_STUB_STACK_BYTES 65536

@@ -1925,10 +1925,9 @@ let close_apply_cont acc env ~dbg cont trap_action args : Expr_with_acc.t =
   in
   Expr_with_acc.create_apply_cont acc apply_cont
 
-(* Patchprof profiles are consumed together with the pseudo-instrumentation
-   labels, so compiling for patchprof enables them automatically. *)
-let branch_labels_enabled () =
-  !Oxcaml_flags.branch_provenance || Oxcaml_flags.patchprof_enabled ()
+(* Pseudo-instrumentation labels are consumed together with patchprof
+   profiles, so they are created exactly when compiling for patchprof. *)
+let branch_labels_enabled () = Oxcaml_flags.patchprof_enabled ()
 
 (* Attach fresh pseudo-instrumentation labels for a switch about to be
    created: the positional array is indexed by scrutinee value (so that it

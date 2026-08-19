@@ -15,8 +15,11 @@
 (**************************************************************************)
 (* Patchprof instrumentation is on by default wherever it is supported; the
    runtime only activates it when [OCAML_PATCHPROF_OUT] is set.  A defaulted
-   flag yields silently to incompatible options (see [Patchprof.enabled] and
-   [Asmlink]); an explicit [-patchprof] turns those conflicts into errors. *)
+   flag yields silently to incompatible link conditions (see [Asmlink]); an
+   explicit [-patchprof] turns those into errors.  Function-sections style
+   options always conflict loudly (see [patchprof_enabled]): they are never
+   on by default, so their combination with patchprof is an explicit
+   contradiction that must not be resolved silently either way. *)
 let patchprof =                              (* -[no-]patchprof *)
   ref
     (String.equal Config.architecture "amd64"
@@ -66,14 +69,11 @@ let cfg_value_propagation_flow = ref false
                                         (* -[no]-cfg-value-propagation-flow *)
 let reorder_blocks_random = ref None    (* -reorder-blocks-random seed *)
 let basic_block_sections = ref false    (* -basic-block-sections *)
-let branch_provenance = ref false       (* -gbranch-provenance *)
 (* -module-entry-functions-section *)
 let module_entry_functions_section = ref false
 
 (* The patchprof metadata records one address delta per site within a text
-   section, so sections that the linker may reorder are unsupported.  The
-   default-enabled flag yields to them silently; an explicit [-patchprof]
-   must error. *)
+   section, so sections that the linker may reorder are unsupported. *)
 let patchprof_enabled () =
   !patchprof
   &&
@@ -82,9 +82,12 @@ let patchprof_enabled () =
     || !basic_block_sections
     || !module_entry_functions_section
   in
-  if incompatible_sections && !patchprof_explicit
-  then Misc.fatal_error "-patchprof does not yet support function sections";
-  not incompatible_sections
+  if incompatible_sections
+  then
+    Misc.fatal_error
+      "patchprof does not support function/basic-block sections; pass \
+       -no-patchprof to use them";
+  true
 
 let dasm_comments = ref false (* -dasm-comments *)
 

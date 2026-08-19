@@ -1,5 +1,5 @@
 (* TEST
- flags = "-S -function-sections";
+ flags = "-S -function-sections -no-patchprof";
  function_sections;
  {
    arch_arm64;

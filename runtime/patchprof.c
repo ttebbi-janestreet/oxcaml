@@ -298,7 +298,7 @@ static int read_rotation_period(void)
   const char *text =
     (const char *)caml_secure_getenv(T("OCAML_PATCHPROF_ROTATE_MS"));
   if (text == NULL || text[0] == '\0') {
-    rotate_period_ns = 0;
+    rotate_period_ns = CAML_PATCHPROF_DEFAULT_ROTATE_MS * 1000000ull;
     return 0;
   }
   uint64_t milliseconds;
