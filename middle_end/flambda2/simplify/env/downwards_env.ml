@@ -332,7 +332,7 @@ let enter_set_of_closures
     { machine_width;
       round;
       typing_env;
-      inlined_debuginfo = _;
+      inlined_debuginfo;
       disable_inlining;
       disable_partial_application_stub_generation;
       inlining_state;
@@ -361,7 +361,18 @@ let enter_set_of_closures
   { machine_width;
     round;
     typing_env = TE.closure_env typing_env;
-    inlined_debuginfo = Inlined_debuginfo.none;
+    (* A code binding encountered while simplifying an inlined body is a copy
+       of the original definition, freshly created by that instance of
+       inlining (e.g. the functions of a functor whose application is inlined
+       out).  Keeping [inlined_debuginfo] makes the debuginfo in such copies
+       record the instantiation site, exactly as for the rest of the inlined
+       body; in particular their pseudo-instrumentation labels get distinct
+       creator stacks and discriminators, so that profile counts are not
+       conflated between copies.  (This does not affect line tables or
+       [Debuginfo.to_location], which use the innermost frame.)  The rewrite
+       must be applied only on the first simplification of a code binding;
+       see [Simplify_set_of_closures.dacc_inside_function]. *)
+    inlined_debuginfo;
     disable_inlining;
     disable_partial_application_stub_generation;
     inlining_state;
@@ -639,6 +650,9 @@ let set_inlining_arguments arguments t =
 
 let set_inlined_debuginfo t ~from =
   { t with inlined_debuginfo = from.inlined_debuginfo }
+
+let clear_inlined_debuginfo t =
+  { t with inlined_debuginfo = Inlined_debuginfo.none }
 
 let merge_inlined_debuginfo t ~from_apply_expr =
   { t with

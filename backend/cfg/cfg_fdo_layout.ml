@@ -161,19 +161,22 @@ let dump_frequencies ppf cfg_with_layout ~measured ~origins ~repaired =
       Format.fprintf ppf ", repaired %Ld%s@." r
         (if Int64.equal r 0L then " -> cold" else ""))
 
-(* Functions whose hottest block accounts for at least this fraction of the
-   whole profile's ticks are placed into one shared hot text section, which
-   the default GNU ld linker script groups ahead of ".text" (via its
-   ".text.hot*" input section rule), so the truly hot functions share a few
-   dense pages with no linker script involvement. Everything else is left in
-   its usual section: a single coarse class with a relative threshold keeps
-   the hot region small, which matters because position-keyed counts
-   overestimate duplicated code (e.g. functor copies share their source
-   positions), and because relocating merely warm functions away from their
-   home modules costs iTLB locality without buying instruction locality. *)
-let hot_section_min_fraction = 0.001
+(* Measured functions are sorted by hotness, approximating ocamlfdo's
+   sorting of functions by execution count with power-of-two classes: a
+   function whose hottest measured block has a count in
+   [total/2^(k+1), total/2^k) goes to class k.  The class names use the
+   ".text.sorted." prefix so that the default GNU ld linker script
+   (binutils >= 2.35) packs them via its "SORT(.text.sorted.<star>)" input
+   section rule in name order - hottest class first - between ".text.hot"
+   and ".text",
+   with no linker script involvement; an older linker matches them with its
+   plain ".text.*" rule and the layout degrades to input order.  Functions
+   the profile never saw stay in their usual section. *)
+let hot_section_name klass = Printf.sprintf ".text.sorted.caml.%02d" klass
 
-let hot_section_name = ".text.hot.caml"
+(* Two digits of zero-padding orders up to 100 classes; class 99 would mean
+   a count 2^99 times smaller than the total, so the clamp is theoretical. *)
+let hot_section_max_class = 99
 
 (* Temporary experiment knob: disable only the hot-function section
    assignment (keeping the block reordering) to isolate its performance
@@ -189,25 +192,27 @@ let assign_function_section ~dump profile cfg_with_layout counts =
         if Int64.compare count acc > 0 then count else acc)
       counts 0L
   in
-  let threshold =
-    Int64.of_float
-      (Int64.to_float (Source_position_profile.total_samples profile)
-      *. hot_section_min_fraction)
-    |> Int64.max 1L
-  in
+  let total = Source_position_profile.total_samples profile in
   let section =
     (* Named text sections are not supported on all targets (macOS, Windows);
        [Config.function_sections] tracks exactly that support.
        [-basic-block-sections] emits each function across sections of its own,
        which would override the placement, so leave that mode alone. *)
     if
-      Int64.compare fun_count threshold >= 0
+      Int64.compare fun_count 0L > 0
+      && Int64.compare total fun_count >= 0
       && Config.function_sections
       && (not !Oxcaml_flags.basic_block_sections)
       && not (Lazy.force section_sort_disabled)
     then (
-      cfg.fun_text_section <- Some hot_section_name;
-      Some hot_section_name)
+      let klass =
+        int_of_float
+          (Float.log2 (Int64.to_float total /. Int64.to_float fun_count))
+      in
+      let klass = Int.max 0 (Int.min hot_section_max_class klass) in
+      let name = hot_section_name klass in
+      cfg.fun_text_section <- Some name;
+      Some name)
     else None
   in
   Option.iter
