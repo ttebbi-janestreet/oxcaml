@@ -164,6 +164,14 @@ val fdo_profile_loader : (filename:string -> Source_position_profile.t) ref
     {!Source_position_profile.Error} if the profile is malformed. *)
 val fdo_profile : unit -> Source_position_profile.t option
 
+(** Whether FDO may place profile-hot functions into named text sections
+    (".text.sorted.caml.*"): a profile was named, the target supports named
+    text sections, and nothing overrides the placement. [Cfg_fdo_layout]
+    combines this with per-function profile counts; DWARF emission uses it
+    to select the function-sections code-layout mode. Does not force the
+    lazily loaded profile. *)
+val fdo_section_sorting_enabled : unit -> bool
+
 module Flambda2 : sig
   val debug : bool ref
   val reaper_debug_flags : string list ref

@@ -225,6 +225,27 @@ let fdo_profile_lazy =
 
 let fdo_profile () = Lazy.force fdo_profile_lazy
 
+(* Temporary experiment knob: disable only the hot-function section
+   assignment (keeping the block reordering) to isolate its performance
+   effects. CR ttebbi: remove after the experiments conclude. *)
+let fdo_section_sort_disabled =
+  lazy (Option.is_some (Sys.getenv_opt "OXCAML_FDO_NO_SECTION_SORT"))
+
+(* Named text sections are not supported on all targets (macOS, Windows);
+   [Config.function_sections] tracks exactly that support.
+   [-basic-block-sections] emits each function across sections of its own,
+   which would override the placement, so leave that mode alone.  This
+   predicate only says whether sorting is possible: [Cfg_fdo_layout] applies
+   it per function, together with the profile counts.  DWARF emission (see
+   [Emitaux.begin_dwarf]) must treat any compile that satisfies it as
+   function-sections style, since symbol offsets relative to the unit's
+   [code_begin] can then cross sections. *)
+let fdo_section_sorting_enabled () =
+  Option.is_some !fdo_profile_path
+  && Config.function_sections
+  && (not !basic_block_sections)
+  && not (Lazy.force fdo_section_sort_disabled)
+
 module Flambda2 = struct
   let debug = ref false (* -flambda2-debug *)
   let reaper_debug_flags = ref [] (* -reaper-debug-flags *)

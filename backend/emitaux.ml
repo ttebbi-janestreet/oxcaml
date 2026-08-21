@@ -481,6 +481,11 @@ module Dwarf_helpers = struct
           !Clflags.function_sections
           || !Oxcaml_flags.basic_block_sections
           || !Oxcaml_flags.module_entry_functions_section
+          (* FDO section sorting moves profile-hot functions into their own
+             text sections while [code_begin] stays in the unit's default
+             one, so label offsets relative to [code_begin] would cross
+             sections. *)
+          || Oxcaml_flags.fdo_section_sorting_enabled ()
         then
           (* Use Function_sections mode - ranges will be recorded via
              [record_function_range] as functions are emitted *)

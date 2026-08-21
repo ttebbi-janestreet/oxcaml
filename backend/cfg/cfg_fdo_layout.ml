@@ -178,12 +178,6 @@ let hot_section_name klass = Printf.sprintf ".text.sorted.caml.%02d" klass
    a count 2^99 times smaller than the total, so the clamp is theoretical. *)
 let hot_section_max_class = 99
 
-(* Temporary experiment knob: disable only the hot-function section
-   assignment (keeping the block reordering) to isolate its performance
-   effects. CR ttebbi: remove after the experiments conclude. *)
-let section_sort_disabled =
-  lazy (Option.is_some (Sys.getenv_opt "OXCAML_FDO_NO_SECTION_SORT"))
-
 let assign_function_section ~dump profile cfg_with_layout counts =
   let cfg = Cfg_with_layout.cfg cfg_with_layout in
   let fun_count =
@@ -194,16 +188,12 @@ let assign_function_section ~dump profile cfg_with_layout counts =
   in
   let total = Source_position_profile.total_samples profile in
   let section =
-    (* Named text sections are not supported on all targets (macOS, Windows);
-       [Config.function_sections] tracks exactly that support.
-       [-basic-block-sections] emits each function across sections of its own,
-       which would override the placement, so leave that mode alone. *)
+    (* The shared predicate keeps this in sync with the DWARF code-layout
+       mode selection in [Emitaux.begin_dwarf]. *)
     if
       Int64.compare fun_count 0L > 0
       && Int64.compare total fun_count >= 0
-      && Config.function_sections
-      && (not !Oxcaml_flags.basic_block_sections)
-      && not (Lazy.force section_sort_disabled)
+      && Oxcaml_flags.fdo_section_sorting_enabled ()
     then (
       let klass =
         int_of_float

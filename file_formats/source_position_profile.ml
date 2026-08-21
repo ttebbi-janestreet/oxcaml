@@ -143,7 +143,7 @@ let get_u8 raw pos =
 let get_u32 raw pos =
   check_bounds raw pos 4;
   match raw.data with
-  | Str s -> Int32.to_int (String.get_int32_le s pos) land 0xFFFF_FFFF
+  | Str s -> Int32.unsigned_to_int (String.get_int32_le s pos) |> Option.get
   | Big b ->
     let byte i = Char.code (Bigarray.Array1.unsafe_get b (pos + i)) in
     byte 0 lor (byte 1 lsl 8) lor (byte 2 lsl 16) lor (byte 3 lsl 24)
