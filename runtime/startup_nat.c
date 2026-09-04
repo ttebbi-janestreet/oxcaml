@@ -48,6 +48,9 @@ extern char caml_system__code_begin, caml_system__code_end;
 /* The two symbols above are defined in runtime/$ARCH.S. */
 
 extern uintnat caml_prelinking_in_use;
+#if defined(TARGET_amd64) && defined(SYS_linux)
+extern void caml_singlestep_profiler_init(void);
+#endif
 
 /* Initialize the static data and code area limits. */
 
@@ -136,6 +139,9 @@ value caml_startup_common(char_os **argv, int pooling)
   init_segments();
   caml_init_signals();
   caml_init_nat_signals();
+#if defined(TARGET_amd64) && defined(SYS_linux)
+  caml_singlestep_profiler_init();
+#endif
 #ifdef _WIN32
   caml_win32_overflow_detection();
 #endif

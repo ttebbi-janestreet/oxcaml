@@ -181,6 +181,13 @@ val int_test_of_integer_comparison :
   label_true:Label.t ->
   Cfg.int_test
 
+(** Permute the [ifso]/[ifnot] edge label sets of a conditional's debug info
+    into the successor positions of the terminator built for it by
+    [terminator_of_test] with [label_true] as the [ifso] successor; [None] when
+    the debug info carries no edge labels. *)
+val edge_labels_dbg_of_terminator :
+  Cfg.terminator -> label_true:Label.t -> Debuginfo.t -> Debuginfo.t option
+
 val terminator_of_test :
   Operation.test -> label_false:Label.t -> label_true:Label.t -> Cfg.terminator
 

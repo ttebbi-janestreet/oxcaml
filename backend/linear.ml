@@ -104,7 +104,8 @@ type fundecl =
     fun_num_stack_slots : int Stack_class.Tbl.t;
     fun_frame_required : bool;
     fun_prologue_required : bool;
-    fun_section_name : string option
+    fun_section_name : string option;
+    fun_text_section : string option
   }
 
 (* Invert a test *)

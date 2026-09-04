@@ -468,6 +468,36 @@ let name_if_not_var acc ccenv name simple kind body =
       [id, id_duid, kind]
       Not_user_visible (IR.Simple simple) ~body:(body id)
 
+(* The anchor of pseudo-instrumentation labels created in a function's body (see
+   [Debuginfo.branch_label]): the function's position, or its own tree path in
+   the enclosing function when it has none. *)
+let function_anchor env (loc : L.scoped_location) =
+  match Debuginfo.to_items (Debuginfo.from_location loc) with
+  | item :: _ -> Source_position_profile.function_anchor item
+  | [] ->
+    Source_position_profile.nested_anchor ~anchor:(Env.branch_anchor env)
+      ~path:(Env.branch_path env)
+
+(* The pseudo-instrumentation labels of a switch at tree path [path]: one per
+   scrutinee value, indexed by value so that the array stays meaningful when
+   later simplification deletes arms. [None] when labels are disabled. *)
+let switch_labels env ~path (switch : IR.switch) =
+  if not (Oxcaml_flags.fdo_labels_enabled ())
+  then None
+  else
+    let num_edges =
+      List.fold_left
+        (fun acc (case, _, _, _, _) -> max acc (case + 1))
+        (match switch.failaction with None -> 0 | Some _ -> switch.numconsts)
+        switch.consts
+    in
+    if num_edges <= 0
+    then None
+    else
+      Some
+        (Debuginfo.create_edge_labels ~anchor:(Env.branch_anchor env) ~path
+           ~num_edges)
+
 let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
     (k_exn : Continuation.t) : Expr_with_acc.t =
   match lam with
@@ -514,10 +544,11 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
       } ->
     (* Note that we don't need kind information about [ap_args] since we already
        have it on the corresponding [Simple]s in the environment. *)
+    let parent = Env.branch_path env in
     maybe_insert_let_cont "apply_result" ap_result_layout k acc env ccenv
       (fun acc env ccenv k ->
-        cps_tail_apply acc env ccenv ap_func ap_args ap_region_close ap_mode
-          ap_loc ap_inlined ap_probe ap_result_layout k k_exn)
+        cps_tail_apply acc env ccenv ~parent ap_func ap_args ap_region_close
+          ap_mode ap_loc ap_inlined ap_probe ap_result_layout k k_exn)
   | Lfunction func ->
     let id = Ident.create_local (name_for_function func) in
     let id_duid = Flambda_debug_uid.none in
@@ -543,10 +574,13 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
     (* CR mshinwell: user-visibleness needs thinking about here *)
     let temp_id = Ident.create_local "let_mutable" in
     let temp_id_duid = Lambda.debug_uid_none in
+    let parent = Env.branch_path env in
     let_cont_nonrecursive_with_extra_params acc env ccenv ~is_exn_handler:false
       ~params:[temp_id, temp_id_duid, IR.Not_user_visible, layout]
       ~body:(fun acc env ccenv after_defining_expr ->
-        cps_tail acc env ccenv defining_expr after_defining_expr k_exn)
+        cps_tail acc
+          (Env.enter_child env ~parent 0)
+          ccenv defining_expr after_defining_expr k_exn)
       ~handler:(fun acc env ccenv ->
         let before_unarization =
           Flambda_arity.Component_for_creation.from_lambda layout
@@ -555,7 +589,9 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
         let env, new_ids_with_kinds =
           Env.register_mutable_variable env id ~before_unarization
         in
-        let body acc ccenv = cps acc env ccenv body k k_exn in
+        let body acc ccenv =
+          cps acc (Env.enter_child env ~parent 1) ccenv body k k_exn
+        in
         let temp_id_unarized : Ident.t list =
           match Env.get_unboxed_product_fields env temp_id with
           | None -> [temp_id]
@@ -571,10 +607,15 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
   | Llet ((Strict | Alias | StrictOpt), _, fun_id, duid, Lfunction func, body)
     ->
     (* This case is here to get function names right. *)
+    let parent = Env.branch_path env in
     let bindings =
-      cps_function_bindings env [L.{ id = fun_id; debug_uid = duid; def = func }]
+      cps_function_bindings
+        (Env.enter_child env ~parent 0)
+        [L.{ id = fun_id; debug_uid = duid; def = func }]
     in
-    let body acc ccenv = cps acc env ccenv body k k_exn in
+    let body acc ccenv =
+      cps acc (Env.enter_child env ~parent 1) ccenv body k k_exn
+    in
     let let_expr =
       List.fold_left
         (fun body func acc ccenv ->
@@ -588,7 +629,11 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
     let_expr acc ccenv
   | Llet ((Strict | Alias | StrictOpt), layout, id, duid, Lconst const, body) ->
     (* This case avoids extraneous continuations. *)
-    let body acc ccenv = cps acc env ccenv body k k_exn in
+    let body acc ccenv =
+      cps acc
+        (Env.enter_child env ~parent:(Env.branch_path env) 1)
+        ccenv body k k_exn
+    in
     let kind =
       Flambda_kind.With_subkind.from_lambda_values_and_unboxed_numbers_only
         layout ~machine_width:(Acc.machine_width acc)
@@ -603,6 +648,7 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
         duid,
         Lprim (prim, args, loc),
         body ) -> (
+    let parent = Env.branch_path env in
     let env, result =
       Lambda_to_lambda_transforms.transform_primitive env prim args loc
     in
@@ -618,7 +664,8 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
             }
         else None
       in
-      cps_non_tail_list acc env ccenv args
+      cps_non_tail_list acc env ccenv ~parent:(parent @ [-1]) ~first_child:0
+        args
         (fun acc env ccenv args _arity ->
           let env, ids_with_kinds =
             match layout with
@@ -653,7 +700,9 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
               in
               env, fields
           in
-          let body acc ccenv = cps acc env ccenv body k k_exn in
+          let body acc ccenv =
+            cps acc (Env.enter_child env ~parent 1) ccenv body k k_exn
+          in
           let current_region = Env.current_region env in
           let region =
             Option.map Env.Region_stack_element.region current_region
@@ -690,11 +739,16 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
     then
       Misc.fatal_errorf "Lassign on non-mutable variable %a" Ident.print
         being_assigned;
-    cps_non_tail_simple acc env ccenv new_value
+    let parent = Env.branch_path env in
+    cps_non_tail_simple acc
+      (Env.enter_child env ~parent 0)
+      ccenv new_value
       (fun acc env ccenv new_values _arity ->
         let env = Env.update_mutable_variable env being_assigned in
         let body acc ccenv =
-          let body acc ccenv = cps acc env ccenv body k k_exn in
+          let body acc ccenv =
+            cps acc (Env.enter_child env ~parent 1) ccenv body k k_exn
+          in
           CC.close_let acc ccenv
             [ ( id,
                 Flambda_debug_uid.of_lambda_debug_uid duid,
@@ -721,11 +775,15 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
     cps acc env ccenv defining_expr k k_exn
   | Llet ((Strict | Alias | StrictOpt), layout, id, duid, defining_expr, body)
     ->
+    let parent = Env.branch_path env in
     let_cont_nonrecursive_with_extra_params acc env ccenv ~is_exn_handler:false
       ~params:[id, duid, is_user_visible env id, layout]
       ~body:(fun acc env ccenv after_defining_expr ->
-        cps_tail acc env ccenv defining_expr after_defining_expr k_exn)
-      ~handler:(fun acc env ccenv -> cps acc env ccenv body k k_exn)
+        cps_tail acc
+          (Env.enter_child env ~parent 0)
+          ccenv defining_expr after_defining_expr k_exn)
+      ~handler:(fun acc env ccenv ->
+        cps acc (Env.enter_child env ~parent 1) ccenv body k k_exn)
   (* CR pchambart: This version would avoid one let cont, but would miss the
      value kind. It should be used when CC.close_let can propagate the
      value_kind. *)
@@ -735,8 +793,13 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
    * in
    * cps_non_tail_simple acc env ccenv defining_expr k k_exn *)
   | Lletrec (bindings, body) ->
-    let function_declarations = cps_function_bindings env bindings in
-    let body acc ccenv = cps acc env ccenv body k k_exn in
+    let parent = Env.branch_path env in
+    let function_declarations =
+      cps_function_bindings (Env.enter_child env ~parent 0) bindings
+    in
+    let body acc ccenv =
+      cps acc (Env.enter_child env ~parent 1) ccenv body k k_exn
+    in
     CC.close_let_rec acc ccenv ~function_declarations ~body
       ~current_alloc_region:(Env.current_alloc_region env)
       ~current_region:
@@ -746,7 +809,8 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
     | Praise raise_kind -> (
       match args with
       | [_] ->
-        cps_non_tail_list acc env ccenv args
+        cps_non_tail_list acc env ccenv ~parent:(Env.branch_path env)
+          ~first_child:0 args
           (fun acc _env ccenv args _arity ->
             if List.compare_length_with (List.hd args) 1 <> 0
             then Misc.fatal_error "Lraise takes only one unarized argument";
@@ -797,7 +861,8 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
       k k_exn
   | Lstaticraise (static_exn, args) ->
     let continuation = Env.get_static_exn_continuation env static_exn in
-    cps_non_tail_list acc env ccenv args
+    cps_non_tail_list acc env ccenv ~parent:(Env.branch_path env) ~first_child:0
+      args
       (fun acc env ccenv args _arity ->
         let extra_args =
           List.map
@@ -808,6 +873,7 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
           ~args:(List.flatten args @ extra_args))
       k_exn
   | Lstaticcatch (body, (static_exn, args), handler, r, layout) ->
+    let parent = Env.branch_path env in
     maybe_insert_let_cont "staticcatch_result" layout k acc env ccenv
       (fun acc env ccenv k ->
         let pop_region =
@@ -873,19 +939,27 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
         in
         let handler acc ccenv =
           let ccenv = CCenv.set_not_at_toplevel ccenv in
-          cps_tail acc handler_env ccenv handler k k_exn
+          cps_tail acc
+            (Env.enter_child handler_env ~parent 1)
+            ccenv handler k k_exn
         in
-        let body acc ccenv = cps_tail acc body_env ccenv body k k_exn in
+        let body acc ccenv =
+          cps_tail acc (Env.enter_child body_env ~parent 0) ccenv body k k_exn
+        in
         CC.close_let_cont acc ccenv ~name:continuation ~is_exn_handler:false
           ~params ~recursive ~body ~handler)
   | Lsend (meth_kind, meth, obj, args, pos, mode, loc, layout, _yielding) ->
-    cps_non_tail_simple acc env ccenv obj
+    let parent = Env.branch_path env in
+    cps_non_tail_simple acc
+      (Env.enter_child env ~parent 0)
+      ccenv obj
       (fun acc env ccenv obj _obj_arity ->
         let obj = must_be_singleton_simple obj in
-        cps_non_tail_var "meth" acc env ccenv meth
-          Flambda_kind.With_subkind.any_value
+        cps_non_tail_var "meth" acc
+          (Env.enter_child env ~parent 1)
+          ccenv meth Flambda_kind.With_subkind.any_value
           (fun acc env ccenv meth _meth_arity ->
-            cps_non_tail_list acc env ccenv args
+            cps_non_tail_list acc env ccenv ~parent ~first_child:2 args
               (fun acc env ccenv args args_arity ->
                 maybe_insert_let_cont "send_result" layout k acc env ccenv
                   (fun acc env ccenv k ->
@@ -955,6 +1029,7 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
        same toplevel context, here we need to assume that all of the body could
        be behind a branch. *)
     let ccenv = CCenv.set_not_at_toplevel ccenv in
+    let parent = Env.branch_path env in
     let handler k acc env ccenv =
       CC.close_let acc ccenv
         [ ( Ident.create_local "unit",
@@ -970,7 +1045,8 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
             Not_user_visible
             (End_region
                { is_try_region = true; region = ghost_region; ghost = true })
-            ~body:(fun acc ccenv -> cps_tail acc env ccenv handler k k_exn))
+            ~body:(fun acc ccenv ->
+              cps_tail acc (Env.enter_child env ~parent 1) ccenv handler k k_exn))
     in
     let region_stack_elt = Env.current_region env in
     let begin_try_region body =
@@ -1019,8 +1095,9 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
                           (Some (IR.Push { exn_handler = handler_continuation }))
                           [])
                       ~handler:(fun acc env ccenv ->
-                        cps_tail acc env ccenv body poptrap_continuation
-                          handler_continuation))
+                        cps_tail acc
+                          (Env.enter_child env ~parent 0)
+                          ccenv body poptrap_continuation handler_continuation))
                   ~handler:(fun acc env ccenv ->
                     apply_cont_with_extra_args acc env ccenv ~dbg k
                       (Some (IR.Pop { exn_handler = handler_continuation }))
@@ -1034,8 +1111,11 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
     in
     cps acc env ccenv lam k k_exn
   | Lsequence (lam1, lam2) ->
-    let k acc env ccenv _value _arity = cps acc env ccenv lam2 k k_exn in
-    cps_non_tail_simple acc env ccenv lam1 k k_exn
+    let parent = Env.branch_path env in
+    let k acc env ccenv _value _arity =
+      cps acc (Env.enter_child env ~parent 1) ccenv lam2 k k_exn
+    in
+    cps_non_tail_simple acc (Env.enter_child env ~parent 0) ccenv lam1 k k_exn
   | Lwhile { wh_cond = cond; wh_body = body } ->
     (* CR-someday mshinwell: make use of wh_cond_region / wh_body_region? *)
     let env, loop =
@@ -1061,7 +1141,9 @@ let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
     then
       Misc.fatal_errorf "Lassign on non-mutable variable %a" Ident.print
         being_assigned;
-    cps_non_tail_simple acc env ccenv new_value
+    cps_non_tail_simple acc
+      (Env.enter_child env ~parent:(Env.branch_path env) 0)
+      ccenv new_value
       (fun acc env ccenv new_values _arity ->
         let env = Env.update_mutable_variable env being_assigned in
         let body acc ccenv =
@@ -1246,13 +1328,14 @@ and cps_non_tail_var :
           k acc env ccenv var arity))
     k_exn
 
-and cps_tail_apply acc env ccenv ap_func ap_args ap_region_close ap_mode ap_loc
-    ap_inlined ap_probe ap_return (k : Continuation.t) (k_exn : Continuation.t)
-    : Expr_with_acc.t =
-  cps_non_tail_list acc env ccenv ap_args
+and cps_tail_apply acc env ccenv ~parent ap_func ap_args ap_region_close ap_mode
+    ap_loc ap_inlined ap_probe ap_return (k : Continuation.t)
+    (k_exn : Continuation.t) : Expr_with_acc.t =
+  cps_non_tail_list acc env ccenv ~parent ~first_child:1 ap_args
     (fun acc env ccenv args args_arity ->
-      cps_non_tail_var "func" acc env ccenv ap_func
-        Flambda_kind.With_subkind.any_value
+      cps_non_tail_var "func" acc
+        (Env.enter_child env ~parent 0)
+        ccenv ap_func Flambda_kind.With_subkind.any_value
         (fun acc env ccenv func _func_arity ->
           let exn_continuation : IR.exn_continuation =
             { exn_handler = k_exn;
@@ -1295,27 +1378,33 @@ and cps_non_tail_list :
     Acc.t ->
     Env.t ->
     CCenv.t ->
+    parent:int list ->
+    first_child:int ->
     Lambda.lambda list ->
     non_tail_list_continuation ->
     Continuation.t ->
     Expr_with_acc.t =
- fun acc env ccenv lams (k : non_tail_list_continuation) k_exn ->
-  let lams = List.rev lams in
+ fun acc env ccenv ~parent ~first_child lams (k : non_tail_list_continuation)
+     k_exn ->
+  (* The [i]th term is the [first_child + i]th subterm of the parent. *)
+  let lams = List.rev (List.mapi (fun i lam -> first_child + i, lam) lams) in
   (* Always evaluate right-to-left. *)
-  cps_non_tail_list_core acc env ccenv lams
+  cps_non_tail_list_core acc env ccenv ~parent lams
     (fun acc env ccenv ids
          (arity : [`Complex] Flambda_arity.Component_for_creation.t list) ->
       k acc env ccenv (List.rev ids) (List.rev arity))
     k_exn
 
-and cps_non_tail_list_core acc env ccenv (lams : L.lambda list)
+and cps_non_tail_list_core acc env ccenv ~parent (lams : (int * L.lambda) list)
     (k : non_tail_list_continuation) (k_exn : Continuation.t) =
   match lams with
   | [] -> k acc env ccenv [] []
-  | lam :: lams ->
-    cps_non_tail_simple acc env ccenv lam
+  | (child, lam) :: lams ->
+    cps_non_tail_simple acc
+      (Env.enter_child env ~parent child)
+      ccenv lam
       (fun acc env ccenv simples arity ->
-        cps_non_tail_list_core acc env ccenv lams
+        cps_non_tail_list_core acc env ccenv ~parent lams
           (fun acc env ccenv simples' arity' ->
             k acc env ccenv (simples :: simples') (arity :: arity'))
           k_exn)
@@ -1386,10 +1475,13 @@ and cps_function_bindings env (bindings : Lambda.rec_binding list) =
     else Non_recursive
   in
   let bindings_with_wrappers = List.flatten bindings_with_wrappers in
-  List.map
-    (fun (fun_id, fun_uid, def) ->
+  let parent = Env.branch_path env in
+  List.mapi
+    (fun i (fun_id, fun_uid, def) ->
       let fuid = Flambda_debug_uid.of_lambda_debug_uid fun_uid in
-      cps_function env ~fid:fun_id ~fuid ~recursive:(recursive fun_id)
+      cps_function
+        (Env.enter_child env ~parent i)
+        ~fid:fun_id ~fuid ~recursive:(recursive fun_id)
         ~precomputed_free_idents:(Ident.Map.find fun_id free_idents)
         def)
     bindings_with_wrappers
@@ -1553,7 +1645,7 @@ and cps_function env ~fid ~fuid ~(recursive : Recursive.t)
     Env.create ~current_unit:(Env.current_unit env)
       ~machine_width:(Env.machine_width env) ~return_continuation:body_cont
       ~exn_continuation:body_exn_cont ~my_region:my_region_stack_elt
-      ~my_alloc_region
+      ~my_alloc_region ~branch_anchor:(function_anchor env loc)
   in
   let exn_continuation : IR.exn_continuation =
     { exn_handler = body_exn_cont; extra_args = [] }
@@ -1667,7 +1759,38 @@ and cps_switch acc env ccenv (switch : L.lambda_switch) ~condition_dbg
        blocks that are not treated like variants; [Lswitch] can only be used \
        for variant matching"
       switch.sw_numblocks;
-  let convert_arms_rev env cases wrappers =
+  let parent = Env.branch_path env in
+  (* A switch with both constant and block arms is lowered to a switch on
+     [%is_int] whose edges 0 and 1 lead to the block and constant switches; the
+     paths of the labels and of the arm actions follow that structure. The
+     failaction is shared by both switches and takes the index after the top
+     switch's edges. *)
+  let has_failaction = Option.is_some switch.sw_failaction in
+  let const_only =
+    switch.sw_numblocks = 0
+    || ((not has_failaction) && List.is_empty switch.sw_blocks)
+  in
+  let block_only =
+    (not const_only)
+    && (switch.sw_numconsts = 0
+       || ((not has_failaction) && List.is_empty switch.sw_consts))
+  in
+  let const_path = if const_only then parent else parent @ [1] in
+  let block_path = if block_only then parent else parent @ [0] in
+  let failaction_path =
+    parent
+    @ [ (if const_only
+         then switch.sw_numconsts
+         else if block_only
+         then switch.sw_numblocks
+         else 2) ]
+  in
+  let labelled path (sw : IR.switch) =
+    match switch_labels env ~path sw with
+    | None -> condition_dbg
+    | Some labels -> Debuginfo.with_edge_labels condition_dbg labels
+  in
+  let convert_arms_rev env ~path cases wrappers =
     List.fold_left
       (fun (consts_rev, wrappers) (arm, (action : L.lambda)) ->
         match action with
@@ -1711,7 +1834,11 @@ and cps_switch acc env ccenv (switch : L.lambda_switch) ~condition_dbg
              for mutable values. *)
           let cont = Continuation.create () in
           let dbg = L.try_to_find_debuginfo action in
-          let action acc ccenv = cps_tail acc env ccenv action k k_exn in
+          let action acc ccenv =
+            cps_tail acc
+              (Env.at_branch_path env (path @ [arm]))
+              ccenv action k k_exn
+          in
           let consts_rev = (arm, cont, dbg, None, []) :: consts_rev in
           let wrappers = (cont, action) :: wrappers in
           consts_rev, wrappers
@@ -1719,13 +1846,18 @@ and cps_switch acc env ccenv (switch : L.lambda_switch) ~condition_dbg
           Lambda.fatal_error_invalid_constructor action)
       ([], wrappers) cases
   in
-  cps_non_tail_var "scrutinee" acc env ccenv scrutinee
-    Flambda_kind.With_subkind.any_value
+  cps_non_tail_var "scrutinee" acc
+    (Env.enter_child env ~parent 0)
+    ccenv scrutinee Flambda_kind.With_subkind.any_value
     (fun acc env ccenv scrutinee _arity ->
       let ccenv = CCenv.set_not_at_toplevel ccenv in
-      let consts_rev, wrappers = convert_arms_rev env switch.sw_consts [] in
+      let consts_rev, wrappers =
+        convert_arms_rev env ~path:const_path switch.sw_consts []
+      in
       let blocks_rev, wrappers =
-        convert_arms_rev env (List.combine block_nums sw_blocks) wrappers
+        convert_arms_rev env ~path:block_path
+          (List.combine block_nums sw_blocks)
+          wrappers
       in
       let consts = List.rev consts_rev in
       let blocks = List.rev blocks_rev in
@@ -1735,7 +1867,11 @@ and cps_switch acc env ccenv (switch : L.lambda_switch) ~condition_dbg
         | Some action ->
           let cont = Continuation.create () in
           let dbg = L.try_to_find_debuginfo action in
-          let action acc ccenv = cps_tail acc env ccenv action k k_exn in
+          let action acc ccenv =
+            cps_tail acc
+              (Env.at_branch_path env failaction_path)
+              ccenv action k k_exn
+          in
           let wrappers = (cont, action) :: wrappers in
           Some (cont, dbg, None, []), wrappers
       in
@@ -1747,13 +1883,17 @@ and cps_switch acc env ccenv (switch : L.lambda_switch) ~condition_dbg
       in
       let build_switch scrutinee wrappers =
         let const_switch acc ccenv =
-          CC.close_switch acc ccenv ~condition_dbg scrutinee const_switch
+          CC.close_switch acc ccenv
+            ~condition_dbg:(labelled const_path const_switch)
+            scrutinee const_switch
         in
         let scrutinee_tag = Ident.create_local "scrutinee_tag" in
         let scrutinee_tag_duid = Flambda_debug_uid.none in
         let block_switch acc ccenv =
           let body acc ccenv =
-            CC.close_switch acc ccenv ~condition_dbg scrutinee_tag block_switch
+            CC.close_switch acc ccenv
+              ~condition_dbg:(labelled block_path block_switch)
+              scrutinee_tag block_switch
           in
           CC.close_let acc ccenv
             [ ( scrutinee_tag,
@@ -1804,8 +1944,9 @@ and cps_switch acc env ccenv (switch : L.lambda_switch) ~condition_dbg
           let is_scrutinee_int_duid = Flambda_debug_uid.none in
           let isint_switch acc ccenv =
             let body acc ccenv =
-              CC.close_switch acc ccenv ~condition_dbg is_scrutinee_int
-                isint_switch
+              CC.close_switch acc ccenv
+                ~condition_dbg:(labelled parent isint_switch)
+                is_scrutinee_int isint_switch
             in
             let current_region = Env.current_region env in
             let region =
@@ -1863,6 +2004,9 @@ let lambda_to_flambda ~mode ~machine_width ~big_endian ~cmx_loader
     Env.create ~current_unit:compilation_unit ~machine_width
       ~return_continuation ~exn_continuation ~my_region:None
       ~my_alloc_region:toplevel_my_alloc_region
+      ~branch_anchor:
+        (Source_position_profile.unit_anchor
+           (Compilation_unit.full_path_as_string compilation_unit))
   in
   let program acc ccenv =
     cps_tail acc env ccenv lam return_continuation exn_continuation

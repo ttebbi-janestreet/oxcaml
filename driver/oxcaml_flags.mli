@@ -17,6 +17,7 @@
 (** OxCaml specific command line flags *)
 
 val dump_cfg : bool ref
+val dump_fdo : bool ref
 val cfg_invariants : bool ref
 val regalloc : Clflags.Register_allocator.t ref
 val default_regalloc_linscan_threshold : int
@@ -137,6 +138,30 @@ val dump_llvmir : bool ref
 val keep_llvmir : bool ref
 val llvm_path : string option ref
 val llvm_flags : string ref
+
+val fdo_profile_path : string option ref
+
+(** The source-position FDO profile named by [-fdo-profile], loaded once on
+    first call (or [None] if the flag is unset). Raises
+    {!Source_position_profile.Error} if the profile is malformed. *)
+val fdo_profile : unit -> Source_position_profile.t option
+
+val fdo_labels : bool ref
+
+(** Whether to create pseudo-instrumentation labels for branching constructs
+    (and emit the "fdo_branch_labels" metadata section describing the emitted
+    conditional branches): when [-fdo-labels] was passed, or when a profile is
+    being consumed via [-fdo-profile] (whose edge counts are matched back
+    against the labels). *)
+val fdo_labels_enabled : unit -> bool
+
+(** Whether FDO may place profile-hot functions into named text sections
+    (".text.sorted.caml.*"): a profile was named, the target supports named
+    text sections, and nothing overrides the placement. [Cfg_fdo_layout]
+    combines this with per-function profile counts; DWARF emission uses it
+    to select the function-sections code-layout mode. Does not force the
+    lazily loaded profile. *)
+val fdo_section_sorting_enabled : unit -> bool
 
 module Flambda2 : sig
   val debug : bool ref

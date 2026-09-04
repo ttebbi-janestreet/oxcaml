@@ -77,6 +77,20 @@ val current_output_pos : unit -> output_pos
 
 val output_range : from_pos:output_pos -> to_pos:output_pos -> asm_line list
 
+(** [label_recorded_branches ~from_pos ~to_pos ~recorded] inserts, for every
+    recorded conditional branch in the given output range that survived peephole
+    optimization (which must have run already, so the labels cannot inhibit an
+    optimization), a fresh label directly before the branch instruction and one
+    directly after it, returning (branch label, fallthrough label, datum)
+    triples in emission order. [recorded] pairs each branch's output position
+    (see [current_output_pos]) with a datum, in emission order; records whose
+    instruction was optimized away are dropped. *)
+val label_recorded_branches :
+  from_pos:output_pos ->
+  to_pos:output_pos ->
+  recorded:(output_pos * 'a) list ->
+  (Asm_targets.Asm_label.t * Asm_targets.Asm_label.t * 'a) list
+
 val peephole_optimize_from : output_pos -> unit
 
 (** Code emission *)

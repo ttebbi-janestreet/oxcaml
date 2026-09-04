@@ -28,13 +28,20 @@ module C = Simplify_set_of_closures_context
 
 let dacc_inside_function context ~outer_dacc ~params ~my_closure ~my_alloc_mode
     ~my_depth function_slot_opt ~closure_bound_names_inside_function
-    ~inlining_arguments ~absolute_history code_id ~return_continuation
-    ~exn_continuation ~loopify_state code_metadata =
+    ~inlining_arguments ~absolute_history ~is_resimplifying code_id
+    ~return_continuation ~exn_continuation ~loopify_state code_metadata =
   let dacc = C.dacc_inside_functions context in
   let alloc_modes = Code_metadata.param_modes code_metadata in
+  let denv = DA.denv dacc in
+  (* The debuginfo in the body of a copied code binding (see
+     [DE.enter_set_of_closures]) must be rewritten exactly once: when a function
+     is simplified again ([should_resimplify], below), its body already carries
+     the rewritten debuginfo. *)
   let denv =
-    DE.add_parameters_with_unknown_types ~extra:false ~alloc_modes
-      (DA.denv dacc) params
+    if is_resimplifying then DE.clear_inlined_debuginfo denv else denv
+  in
+  let denv =
+    DE.add_parameters_with_unknown_types ~extra:false ~alloc_modes denv params
     |> DE.set_inlining_arguments inlining_arguments
     |> DE.set_inlining_history_tracker
          (Inlining_history.Tracker.inside_function absolute_history)
@@ -186,8 +193,9 @@ type simplify_function_body_result =
 
 let simplify_function_body context ~outer_dacc function_slot_opt
     ~closure_bound_names_inside_function ~inlining_arguments ~absolute_history
-    code_id code ~return_continuation ~exn_continuation params ~body ~my_closure
-    ~is_my_closure_used:_ ~my_alloc_mode ~my_depth ~free_names_of_body:_ =
+    ~is_resimplifying code_id code ~return_continuation ~exn_continuation params
+    ~body ~my_closure ~is_my_closure_used:_ ~my_alloc_mode ~my_depth
+    ~free_names_of_body:_ =
   let loopify_state =
     if Loopify_attribute.should_loopify (Code.loopify code)
     then Loopify_state.loopify (Continuation.create ~name:"self" ())
@@ -196,8 +204,9 @@ let simplify_function_body context ~outer_dacc function_slot_opt
   let dacc_at_function_entry =
     dacc_inside_function context ~outer_dacc ~params ~my_closure ~my_alloc_mode
       ~my_depth function_slot_opt ~closure_bound_names_inside_function
-      ~inlining_arguments ~absolute_history code_id ~return_continuation
-      ~exn_continuation ~loopify_state (Code.code_metadata code)
+      ~inlining_arguments ~absolute_history ~is_resimplifying code_id
+      ~return_continuation ~exn_continuation ~loopify_state
+      (Code.code_metadata code)
   in
   let dacc = dacc_at_function_entry in
   if not (DA.no_lifted_constants dacc)
@@ -372,7 +381,7 @@ type simplify_function_result =
   }
 
 let simplify_function0 context ~outer_dacc function_slot_opt code_id code
-    ~closure_bound_names_inside_function =
+    ~closure_bound_names_inside_function ~is_resimplifying =
   let denv_prior_to_sets = C.dacc_prior_to_sets context |> DA.denv in
   let inlining_arguments_from_denv =
     denv_prior_to_sets |> DE.inlining_arguments
@@ -425,7 +434,7 @@ let simplify_function0 context ~outer_dacc function_slot_opt code_id code
       ~f:
         (simplify_function_body context ~outer_dacc function_slot_opt
            ~closure_bound_names_inside_function ~inlining_arguments
-           ~absolute_history code_id code)
+           ~absolute_history ~is_resimplifying code_id code)
   in
   let should_resimplify = UA.resimplify uacc_after_upwards_traversal in
   let outer_dacc, lifted_consts_this_function =
@@ -497,7 +506,14 @@ let simplify_function0 context ~outer_dacc function_slot_opt code_id code
        closures, not the code, but at the moment To_cmm looks at the debuginfo
        of the code to compute the debuginfo of the set of closures
        allocation. *)
-    let dbg = DE.add_inlined_debuginfo (DA.denv outer_dacc) (Code.dbg code) in
+    let dbg =
+      (* As for the body (see [dacc_inside_function]), rewrite only on the first
+         simplification: on resimplification [Code.dbg code] has already been
+         rewritten. *)
+      if is_resimplifying
+      then Code.dbg code
+      else DE.add_inlined_debuginfo (DA.denv outer_dacc) (Code.dbg code)
+    in
     Rebuilt_static_const.create_code
       (DA.are_rebuilding_terms dacc_after_body)
       code_id ~params_and_body ~free_names_of_params_and_body:free_names_of_code
@@ -550,6 +566,7 @@ let simplify_function context ~outer_dacc function_slot code_id
         let { code_id; code = new_code; outer_dacc; should_resimplify } =
           simplify_function0 context ~outer_dacc (Some function_slot) code_id
             code ~closure_bound_names_inside_function
+            ~is_resimplifying:(count > 0)
         in
         match new_code with
         | None -> code_id, outer_dacc
@@ -1163,7 +1180,7 @@ let simplify_static_stub_function dacc code ~all_code ~simplify_function_body =
   in
   let { code_id = _; code; outer_dacc; should_resimplify = _ } =
     simplify_function0 context ~outer_dacc:dacc None (Code.code_id code) code
-      ~closure_bound_names_inside_function
+      ~closure_bound_names_inside_function ~is_resimplifying:false
   in
   let code =
     match code with

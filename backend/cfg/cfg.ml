@@ -99,7 +99,8 @@ type t =
     next_instruction_id : InstructionId.sequence;
     fun_ret_type : Cmm.machtype;
     mutable allowed_to_be_irreducible : bool;
-    mutable register_locations_are_set : bool
+    mutable register_locations_are_set : bool;
+    mutable fun_text_section : string option
   }
 
 let create ~fun_name ~fun_args ~fun_codegen_options ~fun_dbg ~fun_contains_calls
@@ -119,7 +120,8 @@ let create ~fun_name ~fun_args ~fun_codegen_options ~fun_dbg ~fun_contains_calls
     next_instruction_id;
     fun_ret_type;
     allowed_to_be_irreducible;
-    register_locations_are_set = false
+    register_locations_are_set = false;
+    fun_text_section = None
   }
 
 let mem_block t label = Label.Tbl.mem t.blocks label
@@ -160,6 +162,17 @@ let successor_labels ~normal ~exn block =
       Label.Set.add label (successor_labels_normal block.terminator))
 
 let predecessor_labels block = Label.Set.elements block.predecessors
+
+let edge_label_positions (terminator : terminator) : Label.t array =
+  match terminator with
+  | Parity_test { ifso; ifnot } | Truth_test { ifso; ifnot } ->
+    [| ifso; ifnot |]
+  | Int_test { lt; eq; gt; is_signed = _; imm = _ } -> [| lt; eq; gt |]
+  | Float_test { lt; eq; gt; uo; width = _ } -> [| lt; eq; gt; uo |]
+  | Switch labels -> labels
+  | Never | Always _ | Return | Raise _ | Tailcall_self _ | Tailcall_func _
+  | Call_no_return _ | Invalid _ | Call _ | Prim _ ->
+    [||]
 
 let replace_successor_labels t ~normal ~exn block ~f =
   (* Check that the new labels are in [t] *)

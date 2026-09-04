@@ -35,9 +35,25 @@ val create :
   exn_continuation:Continuation.t ->
   my_region:Region_stack_element.t option ->
   my_alloc_region:Ident.t ->
+  branch_anchor:string ->
   t
 
 val current_unit : t -> Compilation_unit.t
+
+(** The identity of branches for pseudo-instrumentation labels (see
+    [Debuginfo.branch_label]): the anchor of the function whose body is being
+    translated, and the tree path (outermost first) of the Lambda term being
+    translated within it. *)
+val branch_anchor : t -> string
+
+val branch_path : t -> int list
+
+val at_branch_path : t -> int list -> t
+
+(** The path of the [i]th subterm of the term at [parent]. The environment flows
+    through continuations, so the parent's path is passed explicitly rather than
+    read from [t]. *)
+val enter_child : t -> parent:int list -> int -> t
 
 val machine_width : t -> Target_system.Machine_width.t
 

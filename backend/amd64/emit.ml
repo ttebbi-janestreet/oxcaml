@@ -448,6 +448,20 @@ let emit_function_or_basic_block_section_name () =
   in
   emit_named_text_section !function_name ~suffix
 
+(* The text section chosen for the current function by profile-guided function
+   placement, if any. Unlike the sections above, this name is complete:
+   functions of the same hotness class share it. *)
+let current_text_section = ref None
+
+let emit_current_function_section () =
+  match !current_text_section with
+  | None -> emit_function_or_basic_block_section_name ()
+  | Some name ->
+    D.switch_to_section_raw ~names:[name] ~flags:(Some "ax") ~args:["@progbits"]
+      ~is_delayed:false;
+    (* See the warning in [emit_named_text_section]. *)
+    D.unsafe_set_internal_section_ref Text
+
 let emit_Llabel fallthrough lbl section_name =
   (if !Oxcaml_flags.basic_block_sections
    then
@@ -1966,6 +1980,32 @@ let prologue_stack_offset () =
   assert !frame_required;
   frame_size () - 8 - if fp then 8 else 0
 
+(* Conditional jumps whose Linear instruction carries resolved edge labels,
+   recorded at emission in buffer order (most recent first). After peephole
+   optimization has run, the surviving branches are given labels
+   ([X86_proc.label_recorded_branches]) and registered with [Fdo_branch_labels]
+   for the branch-label metadata section. *)
+let labelled_jccs : (X86_proc.output_pos * Debuginfo.t) list ref = ref []
+
+(* [rev_positions] are the output positions of the conditional jumps just
+   emitted for one Linear instruction with debug info [dbg], most recent first.
+   Only the last jump can fall through to the instruction's fallthrough
+   successor; an earlier one (of a two-jump float test) falls through to the
+   next jump and so carries no fallthrough labels. *)
+let record_labelled_jccs dbg ~rev_positions =
+  match Debuginfo.edge_labels dbg with
+  | Some (Debuginfo.Resolved { taken; fallthrough = _ }) ->
+    let cascade_dbg =
+      Debuginfo.with_edge_labels dbg
+        (Debuginfo.Resolved { taken; fallthrough = [] })
+    in
+    labelled_jccs
+      := List.mapi
+           (fun i pos -> pos, if i = 0 then dbg else cascade_dbg)
+           rev_positions
+         @ !labelled_jccs
+  | Some (Debuginfo.Positional _) | None -> ()
+
 (* Emit an instruction *)
 let emit_instr ~first ~last ~fallthrough i =
   let open Simd_instrs in
@@ -2569,18 +2609,63 @@ let emit_instr ~first ~last ~fallthrough i =
     emit_Llabel fallthrough lbl section_name
   | Lbranch lbl -> I.jmp (emit_label_arg ~section:Text lbl)
   | Lcondbranch (tst, lbl) ->
-    emit_test i tst ~taken:(fun c -> I.j c (emit_label_arg ~section:Text lbl))
+    let jccs = ref [] in
+    emit_test i tst ~taken:(fun c ->
+        I.j c (emit_label_arg ~section:Text lbl);
+        jccs := X86_proc.current_output_pos () :: !jccs);
+    record_labelled_jccs i.dbg ~rev_positions:!jccs
   | Lcondbranch3 (lbl0, lbl1, lbl2) -> (
+    (* The three jumps share one Linear instruction, so linearization could not
+       resolve edge labels per jump; do it here, where each jump is emitted
+       individually. Positions are [lt], [eq], [gt] in that order, matching the
+       positional label sets. Only the last emitted jump can fall through to a
+       successor: the positions with no explicit jump. *)
+    let record_branch =
+      match Debuginfo.edge_labels i.dbg with
+      | Some (Debuginfo.Positional ([| _; _; _ |] as sets)) ->
+        let jumps = [| lbl0; lbl1; lbl2 |] in
+        let last_emitted =
+          if Option.is_some lbl2
+          then 2
+          else if Option.is_some lbl1
+          then 1
+          else 0
+        in
+        let fallthrough =
+          List.concat
+            (List.filteri
+               (fun j _ -> Option.is_none jumps.(j))
+               (Array.to_list sets))
+        in
+        fun position ->
+          let fallthrough =
+            if position = last_emitted then fallthrough else []
+          in
+          let dbg =
+            Debuginfo.with_edge_labels i.dbg
+              (Debuginfo.Resolved { taken = sets.(position); fallthrough })
+          in
+          labelled_jccs
+            := (X86_proc.current_output_pos (), dbg) :: !labelled_jccs
+      | Some (Debuginfo.Positional _ | Debuginfo.Resolved _) | None ->
+        fun _ -> ()
+    in
     I.cmp (int 1) (arg i 0);
     (match lbl0 with
     | None -> ()
-    | Some lbl -> I.jb (emit_label_arg ~section:Text lbl));
+    | Some lbl ->
+      I.jb (emit_label_arg ~section:Text lbl);
+      record_branch 0);
     (match lbl1 with
     | None -> ()
-    | Some lbl -> I.je (emit_label_arg ~section:Text lbl));
+    | Some lbl ->
+      I.je (emit_label_arg ~section:Text lbl);
+      record_branch 1);
     match lbl2 with
     | None -> ()
-    | Some lbl -> I.ja (emit_label_arg ~section:Text lbl))
+    | Some lbl ->
+      I.ja (emit_label_arg ~section:Text lbl);
+      record_branch 2)
   | Lswitch jumptbl ->
     let lbl = L.create Text in
     (* rax and rdx are clobbered by the Lswitch, meaning that no variable that
@@ -2711,7 +2796,8 @@ let fundecl fundecl =
   all_functions := fundecl :: !all_functions;
   current_basic_block_section
     := Option.value fundecl.fun_section_name ~default:"";
-  emit_function_or_basic_block_section_name ();
+  current_text_section := fundecl.fun_text_section;
+  emit_current_function_section ();
   D.align ~fill:Nop ~bytes:16;
   add_def_symbol fundecl.fun_name;
   let fundecl_sym = S.create_global fundecl.fun_name in
@@ -2743,6 +2829,14 @@ let fundecl fundecl =
   emit_all ~first:true ~fallthrough:true fundecl.fun_body;
   X86_proc.peephole_optimize_from fun_body_start;
   let fun_body_end = current_output_pos () in
+  (match !labelled_jccs with
+  | [] -> ()
+  | recorded ->
+    X86_proc.label_recorded_branches ~from_pos:fun_body_start
+      ~to_pos:fun_body_end ~recorded:(List.rev recorded)
+    |> List.iter (fun (jcc, fin, dbg) ->
+        Fdo_branch_labels.record ~jcc ~fin ~dbg));
+  labelled_jccs := [];
   List.iter emit_call_gc !call_gc_sites;
   List.iter emit_local_realloc !local_realloc_sites;
   let gc_jump_pads_end = current_output_pos () in
@@ -2792,6 +2886,7 @@ let data l =
 
 let reset_all () =
   X86_proc.reset_asm_code ();
+  Fdo_branch_labels.reset ();
   Emitaux.reset ();
   reset_debug_info ();
   (* PR#5603 *)
@@ -3190,6 +3285,7 @@ let end_assembly () =
   D.size frametable_sym;
   D.data ();
   Probe_emission.emit_probe_notes ~add_def_symbol;
+  Fdo_branch_labels.emit_section ();
   emit_trap_notes ();
   D.mark_stack_non_executable ();
   (* Note that [mark_stack_non_executable] switches the section on Linux. *)

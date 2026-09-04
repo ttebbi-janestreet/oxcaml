@@ -334,15 +334,57 @@ module Dbg = struct
 
 end
 
-type t = { dbg : Dbg.t; assume_zero_alloc : ZA.Assume_info.t }
+(* Pseudo-instrumentation labels for branch profiling: a label is created
+   for each control-flow edge of a branching/switching construct when the
+   construct is created or lowered, is carried in the debug info of the
+   resulting branch instructions (one set of labels per outgoing edge, since
+   transformations may stack several labels on one edge, e.g. by constant
+   folding a branch), and is preserved - only ever swapped or rearranged
+   along with the control flow - until emission into the executable's
+   metadata.  A label is identified structurally, not by source positions:
+   an anchor naming the enclosing function (or compilation unit), the path of
+   child indices from that function's body to the branching construct in the
+   Lambda tree, extended by the edge's index; a later lowering that creates a
+   genuinely new branch appends further indices.  Inlining records the call
+   sites the label was inlined through, exactly like the debug info of the
+   inlined code.
 
-let none = { dbg = []; assume_zero_alloc = ZA.Assume_info.none }
+   Successor information travels in two forms.  While the branch still has
+   positional successors, [Positional] maps each successor position of the
+   current representation (its meaning follows the construct: [ifso]/[ifnot]
+   for a two-way conditional, [lt]/[eq]/[gt](/[uo]) for comparison
+   terminators, the scrutinee value for a switch) to the set of labels
+   carried by that edge.  Once linearization has fixed which side of a
+   concrete conditional jump is taken, [Resolved] records the label sets of
+   its two outcomes directly. *)
+type edge_labels =
+  | Positional of branch_label list array
+  | Resolved of { taken: branch_label list; fallthrough: branch_label list }
 
-let of_items items = { dbg = items; assume_zero_alloc = ZA.Assume_info.none }
+and branch_label = {
+  label_anchor: string;
+  label_path: int list; (* outermost first, the edge index last *)
+  label_context: Dbg.t; (* inlining call sites, outermost frame first *)
+}
 
-let mapi_items { dbg; assume_zero_alloc } ~f =
+(* Like [assume_zero_alloc], [edge_labels] is not debug information proper
+   but rides along because debug info reaches every branch instruction. *)
+type t =
+  { dbg : Dbg.t;
+    assume_zero_alloc : ZA.Assume_info.t;
+    edge_labels : edge_labels option
+  }
+
+let none =
+  { dbg = []; assume_zero_alloc = ZA.Assume_info.none; edge_labels = None }
+
+let of_items items =
+  { dbg = items; assume_zero_alloc = ZA.Assume_info.none; edge_labels = None }
+
+let mapi_items { dbg; assume_zero_alloc; edge_labels } ~f =
   { dbg = List.mapi f dbg;
-    assume_zero_alloc
+    assume_zero_alloc;
+    edge_labels
   }
 
 let to_items t = t.dbg
@@ -376,12 +418,12 @@ let item_from_location ~scopes loc =
   }
 
 let from_location = function
-  | Scoped_location.Loc_unknown ->
-    { dbg = []; assume_zero_alloc = ZA.Assume_info.none; }
+  | Scoped_location.Loc_unknown -> none
   | Scoped_location.Loc_known {scopes; loc} ->
     assert (not (Location.is_none loc));
     let assume_zero_alloc = Scoped_location.get_assume_zero_alloc ~scopes in
-    { dbg = [item_from_location ~scopes loc]; assume_zero_alloc; }
+    { dbg = [item_from_location ~scopes loc]; assume_zero_alloc;
+      edge_labels = None }
 
 let to_location { dbg; assume_zero_alloc=_ } =
   let rec last = function
@@ -406,20 +448,46 @@ let to_location { dbg; assume_zero_alloc=_ } =
       } in
     { loc_ghost = false; loc_start; loc_end; }
 
-let inline { dbg = dbg1; assume_zero_alloc = a1; }
-      ~from_inlined_body:{ dbg = dbg2; assume_zero_alloc = a2; } =
+let inline { dbg = dbg1; assume_zero_alloc = a1; edge_labels = _ }
+      ~from_inlined_body:{ dbg = dbg2; assume_zero_alloc = a2; edge_labels } =
+  (* Pseudo-instrumentation labels carried by the inlinee's branches record
+     the call site exactly like the carrying debug info. *)
+  let inline_label label =
+    { label with label_context = dbg1 @ label.label_context }
+  in
+  let edge_labels =
+    match edge_labels with
+    | None -> None
+    | Some (Positional sets) ->
+      Some (Positional (Array.map (List.map inline_label) sets))
+    | Some (Resolved { taken; fallthrough }) ->
+      Some (Resolved { taken = List.map inline_label taken;
+                       fallthrough = List.map inline_label fallthrough })
+  in
   { dbg = dbg1 @ dbg2;
     assume_zero_alloc =
       (* Drop "inferred" zero_alloc annotation from a call when
          the callee is inlined. *)
       if ZA.Assume_info.is_inferred a1 then a2 else
-      ZA.Assume_info.meet a1 a2; }
+      ZA.Assume_info.meet a1 a2;
+    edge_labels }
 
-let is_none { dbg; assume_zero_alloc } =
+let with_edge_labels t edges = { t with edge_labels = Some edges }
+
+let edge_labels t = t.edge_labels
+
+let create_edge_labels ~anchor ~path ~num_edges =
+  Positional
+    (Array.init num_edges (fun i ->
+       [{ label_anchor = anchor; label_path = path @ [i];
+          label_context = [] }]))
+
+let is_none { dbg; assume_zero_alloc; edge_labels } =
   ZA.Assume_info.is_none assume_zero_alloc && Dbg.is_none dbg
+  && Option.is_none edge_labels
 
-let compare { dbg = dbg1; assume_zero_alloc = a1; }
-      { dbg = dbg2; assume_zero_alloc = a2; } =
+let compare { dbg = dbg1; assume_zero_alloc = a1; edge_labels = _ }
+      { dbg = dbg2; assume_zero_alloc = a2; edge_labels = _ } =
   let res = Dbg.compare dbg1 dbg2 in
   if res <> 0 then res else ZA.Assume_info.compare a1 a2
 
@@ -468,19 +536,20 @@ let rec print_compact_extended ppf t =
 
 let print_compact_extended ppf { dbg; } = print_compact_extended ppf dbg
 
-let merge ~into:{ dbg = dbg1; assume_zero_alloc = a1; }
-      { dbg = dbg2; assume_zero_alloc = a2 } =
+let merge ~into:{ dbg = dbg1; assume_zero_alloc = a1; edge_labels = e1 }
+      { dbg = dbg2; assume_zero_alloc = a2; edge_labels = e2 } =
   (* Keep the first [dbg] info to match existing behavior.
      When assume_zero_alloc is only on one of the inputs but not both, keep [dbg]
      from the other.
   *)
-  let dbg =
+  let dbg, edge_labels =
     match ZA.Assume_info.is_none a1, ZA.Assume_info.is_none a2 with
-    | false, true -> dbg2
-    | _,  _ -> dbg1
+    | false, true -> dbg2, e2
+    | _,  _ -> dbg1, e1
   in
   { dbg;
-    assume_zero_alloc = ZA.Assume_info.join a1 a2
+    assume_zero_alloc = ZA.Assume_info.join a1 a2;
+    edge_labels
   }
 
 let assume_zero_alloc t = t.assume_zero_alloc

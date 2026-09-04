@@ -14,6 +14,7 @@
 (*                                                                        *)
 (**************************************************************************)
 let dump_cfg = ref false                (* -dcfg *)
+let dump_fdo = ref false                (* -dfdo *)
 let cfg_invariants = ref false          (* -dcfg-invariants *)
 let regalloc = ref Clflags.Register_allocator.Cfg (* -regalloc *)
 let default_regalloc_linscan_threshold = 100_000
@@ -172,6 +173,43 @@ let keep_llvmir = ref false (* -keep-llvmir *)
 let llvm_path = ref None (* -llvm-path *)
 
 let llvm_flags = ref "" (* -llvm-flags *)
+
+let fdo_profile_path = ref None (* -fdo-profile *)
+
+(* The profile is loaded once, on first use, from [fdo_profile_path] (which is
+   set during argument parsing, before this is forced). Held here so that any
+   compiler phase can consult it. Loading raises if the profile is malformed,
+   surfacing broken feedback-directed optimization loudly. *)
+let fdo_profile_lazy =
+  lazy
+    (Option.map (fun filename -> Source_position_profile.load ~filename)
+       !fdo_profile_path)
+
+let fdo_profile () = Lazy.force fdo_profile_lazy
+
+let fdo_labels = ref false (* -fdo-labels *)
+
+(* Pseudo-instrumentation labels name the edges of branching constructs.
+   They are needed both to produce a profile with edge counts (the
+   "fdo_branch_labels" metadata section attributes decoded branch counts to
+   them) and to consume one (the profile's counts are matched back against
+   them), so they are created when either side is requested. *)
+let fdo_labels_enabled () =
+  !fdo_labels || Option.is_some !fdo_profile_path
+
+(* Named text sections are not supported on all targets (macOS, Windows);
+   [Config.function_sections] tracks exactly that support.
+   [-basic-block-sections] emits each function across sections of its own,
+   which would override the placement, so leave that mode alone.  This
+   predicate only says whether sorting is possible: [Cfg_fdo_layout] applies
+   it per function, together with the profile counts.  DWARF emission (see
+   [Emitaux.begin_dwarf]) must treat any compile that satisfies it as
+   function-sections style, since symbol offsets relative to the unit's
+   [code_begin] can then cross sections. *)
+let fdo_section_sorting_enabled () =
+  Option.is_some !fdo_profile_path
+  && Config.function_sections
+  && not !basic_block_sections
 
 module Flambda2 = struct
   let debug = ref false (* -flambda2-debug *)

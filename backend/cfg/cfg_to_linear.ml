@@ -111,6 +111,60 @@ let cross_section cfg_with_layout src dst =
       Misc.fatal_errorf "Missing section for %a" Label.format src
   else false
 
+(* When the terminator carries pseudo-instrumentation labels, resolve for each
+   emitted conditional branch the label sets of its two machine edges and store
+   them on that instruction's debug info. The taken edge collects the labels of
+   the successor positions that jump to the branch's target (several positions
+   may share a label set; the profile sums over machine edges, so duplication is
+   safe). The machine fallthrough of a branch commits to a successor only when
+   the next control-flow instruction is not another conditional branch: then it
+   carries the labels of the position matching the fallthrough destination (an
+   explicit trailing jump, or the next block in the layout); in the middle of a
+   branch cascade it carries none. [Lcondbranch3] keeps its positional sets: the
+   emitter resolves its jumps individually. *)
+let resolve_edge_labels (terminator : Cfg.terminator Cfg.instruction)
+    (desc_list : L.instruction_desc list) ~(fallthrough_label : Label.t) :
+    (L.instruction_desc * Debuginfo.t) list =
+  let positions = Cfg.edge_label_positions terminator.desc in
+  match Debuginfo.edge_labels terminator.dbg with
+  | Some (Debuginfo.Positional sets)
+    when Array.length sets = Array.length positions ->
+    let labels_of target =
+      let labels = ref [] in
+      Array.iteri
+        (fun i label ->
+          if Label.equal label target then labels := sets.(i) @ !labels)
+        positions;
+      !labels
+    in
+    let is_control (desc : L.instruction_desc) =
+      match[@ocaml.warning "-4"] desc with
+      | L.Lcondbranch _ | L.Lcondbranch3 _ | L.Lbranch _ -> true
+      | _ -> false
+    in
+    let rec map = function
+      | [] -> []
+      | desc :: rest ->
+        let dbg =
+          match[@ocaml.warning "-4"] desc with
+          | L.Lcondbranch (_, target) ->
+            let taken = labels_of target in
+            let fallthrough =
+              match List.find_opt is_control rest with
+              | Some (L.Lbranch label) -> labels_of label
+              | Some _ -> []
+              | None -> labels_of fallthrough_label
+            in
+            Debuginfo.with_edge_labels terminator.dbg
+              (Debuginfo.Resolved { taken; fallthrough })
+          | _ -> terminator.dbg
+        in
+        (desc, dbg) :: map rest
+    in
+    map desc_list
+  | Some (Debuginfo.Positional _ | Debuginfo.Resolved _) | None ->
+    List.map (fun desc -> desc, terminator.dbg) desc_list
+
 let linearize_terminator cfg_with_layout (func : string) start
     (terminator : Cfg.terminator Cfg.instruction)
     ~(next : Linear_utils.labelled_insn) ~has_epilogue :
@@ -357,15 +411,22 @@ let linearize_terminator cfg_with_layout (func : string) start
   in
   let instr =
     List.fold_left
-      (fun next desc ->
+      (fun next (desc, dbg) ->
         let instr = to_linear_instr desc ~next ~like:terminator in
+        let instr = { instr with L.dbg } in
         match has_epilogue with
         (* In order to match the debug info generated when the epilogue was not
            a linear instruction, we need to explicitly remove debug info, as
-           they were already added to Lepilogue_open. *)
-        | true -> { instr with L.dbg = Debuginfo.none }
+           they were already added to Lepilogue_open. Debug info carrying edge
+           labels is kept with the branch instruction. *)
+        | true ->
+          if Option.is_some (Debuginfo.edge_labels dbg)
+          then instr
+          else { instr with L.dbg = Debuginfo.none }
         | false -> instr)
-      next.insn (List.rev desc_list)
+      next.insn
+      (List.rev
+         (resolve_edge_labels terminator desc_list ~fallthrough_label:next.label))
   in
   instr, tailrec_label
 
@@ -499,5 +560,6 @@ let run cfg_with_layout =
     fun_num_stack_slots;
     fun_frame_required;
     fun_prologue_required;
-    fun_section_name
+    fun_section_name;
+    fun_text_section = cfg.fun_text_section
   }

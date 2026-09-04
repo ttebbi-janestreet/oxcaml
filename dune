@@ -248,6 +248,7 @@
   signature_group
   cmt_format
   cms_format
+  source_position_profile
   untypeast
   includemod
   includemod_errorprinter
@@ -610,6 +611,7 @@
   probe_emission
   simd
   simd_selection
+  fdo_branch_labels
   amd64_simd_defs
   amd64_simd_instrs
   stack_check
@@ -649,6 +651,7 @@
   cfg_quick_hash
   cfg_reducibility
   cfg_to_linear
+  cfg_fdo_layout
   cfg_with_layout
   cfg_with_infos
   cfg_comballoc

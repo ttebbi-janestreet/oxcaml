@@ -116,9 +116,13 @@ type t =
     mutable allowed_to_be_irreducible : bool;
         (* Whether rewrites are allowed to make the CFG irreducible (if the CFG
            is irreducible, the information about loops cannot be trusted). *)
-    mutable register_locations_are_set : bool
+    mutable register_locations_are_set : bool;
         (* Whether register allocation has set the locations of the `Reg.t`
            values. *)
+    mutable fun_text_section : string option
+        (** The text section to emit this function into, if it should not go
+            into the default one. Set by profile-guided function placement (see
+            [Cfg_fdo_layout]); [None] otherwise. *)
   }
 
 val create :
@@ -143,6 +147,12 @@ val predecessor_labels : basic_block -> Label.t list
 (** [exn] does not account for exceptional flow from the block that goes outside
     of the function. *)
 val successor_labels : normal:bool -> exn:bool -> basic_block -> Label.Set.t
+
+(** The successor at each position of a terminator's positional edge label sets
+    (see [Debuginfo.edge_labels]): [ifso]/[ifnot] for boolean tests,
+    [lt]/[eq]/[gt](/[uo]) for comparisons, the arms of a switch; empty for other
+    terminators. *)
+val edge_label_positions : terminator -> Label.t array
 
 val replace_successor_labels :
   t -> normal:bool -> exn:bool -> basic_block -> f:(Label.t -> Label.t) -> unit

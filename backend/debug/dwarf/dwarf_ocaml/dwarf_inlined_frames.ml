@@ -144,7 +144,7 @@ module All_summaries = Identifiable.Make (struct
 end)
 
 let die_for_inlined_frame state ~compilation_unit_proto_die ~parent
-    range_list_attributes block =
+    range_list_attributes ~(call_site : Debuginfo.item) block =
   let abstract_instance_symbol =
     Dwarf_abstract_instances.find state ~compilation_unit_proto_die block
   in
@@ -170,17 +170,21 @@ let die_for_inlined_frame state ~compilation_unit_proto_die ~parent
           ~linkage_name:(Asm_symbol.encode_without_prefix fun_symbol);
         DAH.create_external ~is_visible_externally:true ]
   in
-  let block : Debuginfo.item = List.hd (Debuginfo.to_items block) in
+  (* [DW_AT_call_file/line/column] must describe the call site of the inlined
+     function, which is the position carried by the parent frame's item
+     [call_site]. (The items of [block] itself carry positions inside the
+     inlined function.) *)
   Proto_die.create ~parent:(Some parent) ~tag:Inlined_subroutine
     ~attribute_values:
       (abstract_instance @ range_list_attributes
-      @ [DAH.create_call_file (Dwarf_state.get_file_num state block.dinfo_file)]
-      @ (if block.dinfo_line >= 0
-         then [DAH.create_call_line block.dinfo_line]
+      @ [ DAH.create_call_file
+            (Dwarf_state.get_file_num state call_site.dinfo_file) ]
+      @ (if call_site.dinfo_line >= 0
+         then [DAH.create_call_line call_site.dinfo_line]
          else [])
       @
-      if block.dinfo_char_start >= 0
-      then [DAH.create_call_column block.dinfo_char_start]
+      if call_site.dinfo_char_start >= 0
+      then [DAH.create_call_column call_site.dinfo_char_start]
       else [])
     ()
 
@@ -288,9 +292,18 @@ let rec create_down_to_innermost_frame fundecl state ~start_of_code_symbol
         create_range_list_attributes_and_summarise state ~start_of_code_symbol
           ~dwarf_4_base_address_entry range all_summaries
       in
+      let call_site =
+        match List.rev prefix with
+        | call_site :: _ -> call_site
+        | [] ->
+          Misc.fatal_errorf
+            "Dwarf_inlined_frames.create_down_to_innermost_frame:@ empty \
+             prefix for %a in %s"
+            Debuginfo.print_compact_extended block fundecl.L.fun_name
+      in
       let inlined_subroutine_die =
         die_for_inlined_frame state ~compilation_unit_proto_die
-          ~parent:parent_die range_list_attributes block
+          ~parent:parent_die range_list_attributes ~call_site block
       in
       DS.Debug.log "Our DIE ref (DW_TAG_inlined_subroutine) for %a is %a\n%!"
         Debuginfo.print_compact_extended block Asm_label.print

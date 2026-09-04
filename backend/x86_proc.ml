@@ -402,11 +402,69 @@ type output_pos = asm_line DLL.cell option (* None means the beginning *)
 
 let current_output_pos () = DLL.last_cell asm_code
 
+let same_output_pos (a : output_pos) (b : output_pos) =
+  match a, b with
+  | Some a, Some b -> DLL.same_cell a b
+  | None, None -> true
+  | None, Some _ | Some _, None -> false
+
 let next_pos pos =
   match pos with None -> DLL.hd_cell asm_code | Some cell -> DLL.next cell
 
 let output_range ~from_pos ~to_pos =
   DLL.range_to_list ~left_incl:(next_pos from_pos) ~right_excl:(next_pos to_pos)
+
+let label_recorded_branches ~from_pos ~to_pos ~recorded =
+  (* [recorded] pairs the output position of each conditional branch of interest
+     with a datum, in emission order. Walk the emitted range; for every recorded
+     branch whose instruction survived peephole optimization (this runs after
+     it, so the labels cannot inhibit an optimization), insert a fresh label
+     directly before it (giving the branch instruction's address) and directly
+     after it (giving its fallthrough address). Records whose instruction
+     disappeared are dropped. *)
+  let stop = next_pos to_pos in
+  let new_label () =
+    Asm_targets.Asm_label.create Asm_targets.Asm_section.Text
+  in
+  let label_line label =
+    Directive (Asm_targets.Asm_directives.Directive.new_label label)
+  in
+  (* Both the walk and [recorded] follow emission order, but peephole
+     optimization may have deleted some recorded instructions, so search the
+     whole pending list (a miss at its head is almost always a hit right after);
+     entries skipped over by a match come earlier in the walk and are dropped as
+     deleted. *)
+  let extract cell pending =
+    let rec loop rev_skipped = function
+      | [] -> None
+      | (pos, datum) :: rest ->
+        if same_output_pos pos (Some cell)
+        then Some (datum, List.rev_append rev_skipped rest)
+        else loop ((pos, datum) :: rev_skipped) rest
+    in
+    loop [] pending
+  in
+  let rec walk cell pending acc =
+    if same_output_pos cell stop
+    then List.rev acc
+    else
+      match cell with
+      | None -> List.rev acc
+      | Some cell -> (
+        let next = DLL.next cell in
+        match[@warning "-4"] DLL.value cell with
+        | Ins (J _) -> (
+          match extract cell pending with
+          | None -> walk next pending acc
+          | Some (datum, pending) ->
+            let jcc_label = new_label () in
+            let fin_label = new_label () in
+            DLL.insert_before cell (label_line jcc_label);
+            DLL.insert_after cell (label_line fin_label);
+            walk next pending ((jcc_label, fin_label, datum) :: acc))
+        | Ins _ | Directive _ -> walk next pending acc)
+  in
+  walk (next_pos from_pos) recorded []
 
 let peephole_optimize_from pos =
   if !Oxcaml_flags.x86_peephole_optimize

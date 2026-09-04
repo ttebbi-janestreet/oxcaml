@@ -1298,16 +1298,34 @@ and switch env res switch =
       (if must_tag then C.tag_targetint targetint_d else targetint_d)
   in
   let make_arm ~must_tag_discriminant env res (d, action) =
+    let original_d = prepare_discriminant ~must_tag:false d in
     let d = prepare_discriminant ~must_tag:must_tag_discriminant d in
     let cmm_action, action_free_vars, action_symbol_inits, res =
       apply_cont env res action
     in
     ( ( d,
+        original_d,
         cmm_action,
         action_free_vars,
         action_symbol_inits,
         Env.add_inlined_debuginfo env (Apply_cont.debuginfo action) ),
       res )
+  in
+  (* The edge label set of the (untagged) discriminant [value], if any: the
+     switch's positional sets are indexed by discriminant. *)
+  let label_set sets value =
+    if value >= 0 && value < Array.length sets then sets.(value) else []
+  in
+  (* For a two-armed switch lowered to an if-then-else, rearrange the per-value
+     edge label sets (if any) into the [then]/[else] positions of the
+     conditional. *)
+  let ite_edge_labels_dbg dbg ~then_original ~else_original =
+    match Debuginfo.edge_labels dbg with
+    | Some (Positional sets) ->
+      Debuginfo.with_edge_labels dbg
+        (Positional
+           [| label_set sets then_original; label_set sets else_original |])
+    | Some (Resolved _) | None -> dbg
   in
   match Target_ocaml_int.Map.cardinal arms with
   (* Binary case: if-then-else *)
@@ -1321,14 +1339,15 @@ and switch env res switch =
        before creating an if-then-else, introducing an indirection that might
        prevent some optimizations performed by Selectgen/Emit when the condition
        is inlined in the if-then-else. Instead we use [C.ite]. *)
-    | ( (0, else_, else_free_vars, else_inits, else_dbg),
-        (_, then_, then_free_vars, then_inits, then_dbg) )
-    | ( (_, then_, then_free_vars, then_inits, then_dbg),
-        (0, else_, else_free_vars, else_inits, else_dbg) ) ->
+    | ( (0, else_original, else_, else_free_vars, else_inits, else_dbg),
+        (_, then_original, then_, then_free_vars, then_inits, then_dbg) )
+    | ( (_, then_original, then_, then_free_vars, then_inits, then_dbg),
+        (0, else_original, else_, else_free_vars, else_inits, else_dbg) ) ->
       let free_vars =
         Backend_var.Set.union scrutinee_free_vars
           (Backend_var.Set.union else_free_vars then_free_vars)
       in
+      let dbg = ite_edge_labels_dbg dbg ~then_original ~else_original in
       (* See comment below about symbol inits and branches *)
       let symbol_inits = Env.Symbol_inits.merge then_inits else_inits in
       let cmm, free_vars, symbol_inits =
@@ -1340,11 +1359,20 @@ and switch env res switch =
     (* Similar case to the previous but none of the arms match 0, so we have to
        generate an equality test, and make sure it is inside the condition to
        ensure Selectgen and Emit can take advantage of it. *)
-    | ( (x, if_x, if_x_free_vars, if_x_symbol_inits, if_x_dbg),
-        (_, if_not, if_not_free_vars, if_not_symbol_inits, if_not_dbg) ) ->
+    | ( (x, x_original, if_x, if_x_free_vars, if_x_symbol_inits, if_x_dbg),
+        ( _,
+          not_x_original,
+          if_not,
+          if_not_free_vars,
+          if_not_symbol_inits,
+          if_not_dbg ) ) ->
       let free_vars =
         Backend_var.Set.union scrutinee_free_vars
           (Backend_var.Set.union if_x_free_vars if_not_free_vars)
+      in
+      let dbg =
+        ite_edge_labels_dbg dbg ~then_original:x_original
+          ~else_original:not_x_original
       in
       let expr =
         C.ite ~dbg
@@ -1365,11 +1393,33 @@ and switch env res switch =
     let m = prepare_discriminant ~must_tag:must_tag_discriminant max_d in
     let cases = Array.make (n + 1) None in
     let index = Array.make (m + 1) n in
+    (* Rearrange the per-value edge label sets (if any) so that they are indexed
+       like [index]: by the (possibly tagged) discriminant the emitted switch
+       scrutinizes. *)
+    let dbg =
+      match Debuginfo.edge_labels dbg with
+      | Some (Positional sets) ->
+        let reindexed = Array.make (m + 1) [] in
+        Target_ocaml_int.Map.iter
+          (fun discriminant _action ->
+            reindexed.(prepare_discriminant ~must_tag:must_tag_discriminant
+                         discriminant)
+              <- label_set sets
+                   (prepare_discriminant ~must_tag:false discriminant))
+          arms;
+        Debuginfo.with_edge_labels dbg (Positional reindexed)
+      | Some (Resolved _) | None -> dbg
+    in
     let _, res, free_vars, symbol_inits =
       Target_ocaml_int.Map.fold
         (fun discriminant action (i, res, free_vars, symbol_inits) ->
-          let (d, cmm_action, action_free_vars, action_symbol_inits, _dbg), res
-              =
+          let ( ( d,
+                  _original_d,
+                  cmm_action,
+                  action_free_vars,
+                  action_symbol_inits,
+                  _dbg ),
+                res ) =
             make_arm ~must_tag_discriminant env res (discriminant, action)
           in
           (* Note about symbol inits and branches: symbol allocation can occur

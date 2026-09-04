@@ -462,6 +462,22 @@ let int_test_of_integer_comparison :
   in
   { lt; eq; gt; is_signed; imm }
 
+(* Given edge label sets describing the [ifso] and [ifnot] successors of a
+   two-way conditional, produce the sets describing the successor positions of
+   [terminator], built for it by [terminator_of_test] with [label_true] as the
+   [ifso] successor. [None] when the debug info carries no such labels. *)
+let edge_labels_dbg_of_terminator (terminator : Cfg.terminator) ~label_true dbg
+    : Debuginfo.t option =
+  match Debuginfo.edge_labels dbg with
+  | Some (Debuginfo.Positional [| ifso; ifnot |]) ->
+    let sets =
+      Array.map
+        (fun label -> if Label.equal label label_true then ifso else ifnot)
+        (Cfg.edge_label_positions terminator)
+    in
+    Some (Debuginfo.with_edge_labels dbg (Debuginfo.Positional sets))
+  | Some (Debuginfo.Positional _ | Debuginfo.Resolved _) | None -> None
+
 let terminator_of_test :
     Operation.test ->
     label_false:Label.t ->

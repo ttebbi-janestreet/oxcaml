@@ -3427,11 +3427,41 @@ module SArgBlocks = struct
 
   let arg_as_test arg = arg
 
-  let make_if () cond ifso ifnot =
-    Cifthenelse
-      (cond, Debuginfo.none, ifso, Debuginfo.none, ifnot, Debuginfo.none)
+  (* The tests and sub-tables the switch compiler generates implement the edges
+     of the switch being translated, split by scrutinee value. When the switch's
+     debug info carries pseudo-instrumentation labels (one set per scrutinee
+     value), a test edge carries the labels of the values it sends that way and
+     a sub-table the sets of the values it covers: no labels are created, the
+     existing ones are distributed. *)
+  let value_labels sets intervals =
+    List.concat_map
+      (fun (lo, hi) ->
+        let lo = Int.max lo 0 and hi = Int.min hi (Array.length sets - 1) in
+        List.concat
+          (List.init (Int.max 0 (hi - lo + 1)) (fun k -> sets.(lo + k))))
+      intervals
 
-  let make_switch dbg () arg cases actions =
+  let make_if () dbg ~ifso ~ifnot cond act_so act_not =
+    let dbg =
+      match Debuginfo.edge_labels dbg with
+      | Some (Debuginfo.Positional sets) ->
+        Debuginfo.with_edge_labels dbg
+          (Debuginfo.Positional
+             [| value_labels sets ifso; value_labels sets ifnot |])
+      | Some (Debuginfo.Resolved _) | None -> Debuginfo.none
+    in
+    Cifthenelse (cond, Debuginfo.none, act_so, Debuginfo.none, act_not, dbg)
+
+  let make_switch dbg () arg ~first_value cases actions =
+    let dbg =
+      match Debuginfo.edge_labels dbg with
+      | Some (Debuginfo.Positional sets) ->
+        Debuginfo.with_edge_labels dbg
+          (Debuginfo.Positional
+             (Array.init (Array.length cases) (fun k ->
+                  value_labels sets [first_value + k, first_value + k])))
+      | Some (Debuginfo.Resolved _) | None -> dbg
+    in
     let actions = Array.map (fun expr -> expr, dbg) actions in
     make_switch arg cases actions dbg
 
