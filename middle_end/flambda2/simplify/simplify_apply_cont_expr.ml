@@ -161,6 +161,16 @@ let simplify_apply_cont dacc apply_cont ~down_to_up =
       (AC.continuation apply_cont)
       use_kind ~env_at_use:(DA.denv dacc) ~arg_types
   in
+  (* The current region continues into the handler (see
+     [Inlined_call_labels]). *)
+  let denv = DA.denv dacc in
+  (match DE.fdo_region denv with
+  | Some region when DE.tracking_inlined_call_labels denv ->
+    Inlined_call_labels.add_continuation_into
+      (DE.inlined_call_labels denv)
+      region
+      (AC.continuation apply_cont)
+  | Some _ | None -> ());
   let dacc =
     let record_args_for_data_flow data_flow =
       Flow.Acc.add_apply_cont_args

@@ -1,0 +1,5 @@
+# The edge of [f]'s conditional (anchored at the function's position; its first
+# branching construct, edge 1) leading to the call to [hot]. Marking it hot
+# makes the other edge's block (the call to [cold]) a known-cold block, which
+# the FDO pass sinks to the end. The label strings come from a -dfdo dump.
+100 hot_cold.ml:10:21:0:1

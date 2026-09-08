@@ -161,6 +161,47 @@ let successor_labels ~normal ~exn block =
 
 let predecessor_labels block = Label.Set.elements block.predecessors
 
+(* Every lowering that rearranges positional edge label sets checks that they
+   match the terminator's successor positions: a mismatch means a lowering lost
+   track of its edges, which would silently corrupt profiles. *)
+let edge_label_positions (terminator : terminator) : Label.t array =
+  match terminator with
+  | Parity_test { ifso; ifnot } | Truth_test { ifso; ifnot } ->
+    [| ifso; ifnot |]
+  | Int_test { lt; eq; gt; is_signed = _; imm = _ } -> [| lt; eq; gt |]
+  | Float_test { lt; eq; gt; uo; width = _ } -> [| lt; eq; gt; uo |]
+  | Switch labels -> labels
+  | Never | Always _ | Return | Raise _ | Tailcall_self _ | Tailcall_func _
+  | Call_no_return _ | Invalid _ | Call _ | Prim _ ->
+    [||]
+
+let check_edge_labels ~context (terminator : terminator instruction) sets =
+  let positions = edge_label_positions terminator.desc in
+  if Array.length sets <> Array.length positions
+  then
+    let kind =
+      match terminator.desc with
+      | Never -> "never"
+      | Always _ -> "goto"
+      | Parity_test _ -> "parity test"
+      | Truth_test _ -> "truth test"
+      | Float_test _ -> "float test"
+      | Int_test _ -> "int test"
+      | Switch _ -> "switch"
+      | Return -> "return"
+      | Raise _ -> "raise"
+      | Tailcall_self _ -> "self tail call"
+      | Tailcall_func _ -> "tail call"
+      | Call_no_return _ -> "no-return call"
+      | Call _ -> "call"
+      | Prim _ -> "primitive"
+      | Invalid _ -> "invalid"
+    in
+    Misc.fatal_errorf
+      "%s: %d edge label sets for %d successor positions of %s at %a" context
+      (Array.length sets) (Array.length positions) kind Debuginfo.print_compact
+      terminator.dbg
+
 let replace_successor_labels t ~normal ~exn block ~f =
   (* Check that the new labels are in [t] *)
   let f src =

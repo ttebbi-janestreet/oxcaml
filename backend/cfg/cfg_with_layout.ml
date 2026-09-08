@@ -453,7 +453,9 @@ let insert_block :
               desc = Cfg.Always successor_label;
               arg = [||];
               res = [||];
-              dbg;
+              (* The body's debug info may have been copied from a conditional
+                 branch, whose edge labels do not describe this jump. *)
+              dbg = Debuginfo.without_edge_labels dbg;
               fdo;
               live;
               stack_offset;

@@ -1788,6 +1788,14 @@ let close_let_cont acc env ~name ~is_exn_handler ~params
     Let_cont_with_acc.build_recursive acc
       ~invariant_params:Bound_parameters.empty ~handlers ~body
 
+(* The debug info of an application, labelling its call site when profiling
+   labels are enabled (see [Debuginfo.with_callsite_label]). *)
+let callsite_dbg loc =
+  let dbg = Debuginfo.from_location loc in
+  if Oxcaml_flags.fdo_labels_enabled ()
+  then Debuginfo.with_callsite_label dbg
+  else dbg
+
 let close_exact_or_unknown_apply acc env
     ({ kind;
        func;
@@ -1821,7 +1829,7 @@ let close_exact_or_unknown_apply acc env
       ~current_alloc_region:(fst (Env.find_var env alloc_region))
       ~current_region ~current_ghost_region
   in
-  let dbg = Debuginfo.from_location loc in
+  let dbg = callsite_dbg loc in
   let acc, call_kind, can_erase_callee =
     match kind with
     | Function -> (
@@ -2569,13 +2577,21 @@ let make_unboxed_function_wrapper acc function_slot ~unarized_params:params
     (main_function_slot, main_code_id) :: function_code_ids,
     Acc.add_code ~code_id:main_code_id ~code:main_code ~slot_offsets acc )
 
+(* The debug info of a function's code, carrying the label of its entry edge
+   when profiling labels are enabled (see [Debuginfo.with_entry_label]). *)
+let function_dbg decl =
+  let dbg = Debuginfo.from_location (Function_decl.loc decl) in
+  if Oxcaml_flags.fdo_labels_enabled ()
+  then Debuginfo.with_entry_label dbg
+  else dbg
+
 let close_one_function acc ~code_id ~external_env ~by_function_slot
     ~function_code_ids decl ~has_lifted_closure ~value_slots_from_idents
     ~function_slots_from_idents ~approx_map function_declarations =
   let acc = Acc.with_free_names Name_occurrences.empty acc in
   let body = Function_decl.body decl in
   let loc = Function_decl.loc decl in
-  let dbg = Debuginfo.from_location loc in
+  let dbg = function_dbg decl in
   let unarized_params = Function_decl.params decl in
   let params_arity = Function_decl.params_arity decl in
   let unarized_param_modes =
@@ -3103,7 +3119,7 @@ let close_functions acc external_env ~current_alloc_region ~current_region
             (Function_decl.zero_alloc_attribute decl)
         in
         let cost_metrics = Cost_metrics.zero in
-        let dbg = Debuginfo.from_location (Function_decl.loc decl) in
+        let dbg = function_dbg decl in
         let is_tupled =
           match Function_decl.kind decl with
           | Curried _ -> false
@@ -3586,7 +3602,7 @@ let wrap_over_application acc env full_call (apply : IR.apply) ~remaining
         ~continuation apply_exn_continuation ~args:remaining
         ~args_arity:remaining_arity ~return_arity:apply.return_arity
         ~call_kind:Call_kind.indirect_function_call_unknown_arity ~alloc_mode
-        apply_dbg ~inlined
+        (callsite_dbg apply.loc) ~inlined
         ~inlining_state:(Inlining_state.default ~round:0)
         ~probe ~position
         ~relative_history:(Env.relative_history_from_scoped ~loc:apply.loc env)

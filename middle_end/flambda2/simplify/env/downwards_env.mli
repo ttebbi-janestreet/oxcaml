@@ -143,9 +143,34 @@ val find_code_exn : t -> Code_id.t -> Code_or_metadata.t
 
 val set_inlined_debuginfo : t -> from:t -> t
 
+(** Forget the specializations recorded by [enter_set_of_closures], for a
+    function being simplified again (its labels are already those of the copy).
+*)
+val clear_specializations : t -> t
+
 val merge_inlined_debuginfo : t -> from_apply_expr:Inlined_debuginfo.t -> t
 
 val add_inlined_debuginfo : t -> Debuginfo.t -> Debuginfo.t
+
+(** For the debuginfo of a code binding defined in an inlined body: like
+    [add_inlined_debuginfo] for its positions, but its entry label is
+    specialized as the labels in its body will be (see [enter_set_of_closures]).
+*)
+val add_inlined_debuginfo_to_code_binding : t -> Debuginfo.t -> Debuginfo.t
+
+(** The pseudo-instrumentation labels of inlined calls (see
+    [Inlined_call_labels]), shared by the whole simplification, and the region
+    (function body or continuation handler) being traversed, [None] at the unit
+    toplevel. *)
+val inlined_call_labels : t -> Inlined_call_labels.t
+
+(** Whether to collect them: labels are enabled and terms are being rebuilt for
+    real (the inlinings of speculative inlining are provisional). *)
+val tracking_inlined_call_labels : t -> bool
+
+val fdo_region : t -> Inlined_call_labels.region option
+
+val set_fdo_region : t -> Inlined_call_labels.region -> t
 
 val round : t -> int
 

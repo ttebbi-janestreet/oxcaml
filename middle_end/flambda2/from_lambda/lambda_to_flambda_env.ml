@@ -91,11 +91,13 @@ type t =
     region_closure_continuations :
       region_closure_continuation Region_stack_element.Map.t;
     my_alloc_region : Ident.t;
-    ident_stamp_upon_starting : int
+    ident_stamp_upon_starting : int;
+    branch_anchor : string list;
+    branch_counter : int ref
   }
 
 let create ~current_unit ~machine_width ~return_continuation ~exn_continuation
-    ~my_region ~my_alloc_region =
+    ~my_region ~my_alloc_region ~branch_anchor =
   let mutables_needed_by_continuations =
     Continuation.Map.of_list
       [return_continuation, Ident.Set.empty; exn_continuation, Ident.Set.empty]
@@ -117,10 +119,19 @@ let create ~current_unit ~machine_width ~return_continuation ~exn_continuation
       Continuation.Map.singleton return_continuation [];
     region_closure_continuations = Region_stack_element.Map.empty;
     my_alloc_region;
-    ident_stamp_upon_starting
+    ident_stamp_upon_starting;
+    branch_anchor;
+    branch_counter = ref 0
   }
 
 let current_unit t = t.current_unit
+
+let branch_anchor t = t.branch_anchor
+
+let fresh_branch_index t =
+  let index = !(t.branch_counter) in
+  incr t.branch_counter;
+  index
 
 let machine_width t = t.machine_width
 

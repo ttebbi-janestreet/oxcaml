@@ -185,6 +185,7 @@
   zero_alloc_utils
   zero_alloc_annotations
   doubly_linked_list
+  fdo_location
   file_sections
   lru
   ;; PARSING
@@ -248,6 +249,7 @@
   signature_group
   cmt_format
   cms_format
+  source_position_profile
   untypeast
   includemod
   includemod_errorprinter
@@ -610,6 +612,8 @@
   probe_emission
   simd
   simd_selection
+  fdo_metadata
+  fdo_call_graph
   amd64_simd_defs
   amd64_simd_instrs
   stack_check
@@ -649,6 +653,8 @@
   cfg_quick_hash
   cfg_reducibility
   cfg_to_linear
+  cfg_fdo_ext_tsp
+  cfg_fdo_layout
   cfg_with_layout
   cfg_with_infos
   cfg_comballoc

@@ -14,6 +14,7 @@
 (*                                                                        *)
 (**************************************************************************)
 let dump_cfg = ref false                (* -dcfg *)
+let dump_fdo = ref false                (* -dfdo *)
 let cfg_invariants = ref false          (* -dcfg-invariants *)
 let regalloc = ref Clflags.Register_allocator.Cfg (* -regalloc *)
 let default_regalloc_linscan_threshold = 100_000
@@ -172,6 +173,42 @@ let keep_llvmir = ref false (* -keep-llvmir *)
 let llvm_path = ref None (* -llvm-path *)
 
 let llvm_flags = ref "" (* -llvm-flags *)
+
+let fdo_profile_path = ref None (* -fdo-profile *)
+
+(* The profile is loaded once, on first use, from [fdo_profile_path] (which is
+   set during argument parsing, before this is forced). Held here so that any
+   compiler phase can consult it. Loading raises if the profile is malformed,
+   surfacing broken feedback-directed optimization loudly. *)
+let fdo_profile_lazy =
+  lazy
+    (Option.map (fun filename -> Source_position_profile.load ~filename)
+       !fdo_profile_path)
+
+let fdo_profile () = Lazy.force fdo_profile_lazy
+
+let fdo_labels = ref false (* -fdo-labels *)
+
+(* Pseudo-instrumentation labels name the edges of branching constructs.
+   They are needed both to produce a profile with edge counts (the
+   "fdo_metadata" section attributes decoded branch counts to them) and to
+   consume one (the profile's counts are matched back against them), so they
+   are created when either side is requested. *)
+let fdo_labels_enabled () =
+  !fdo_labels || Option.is_some !fdo_profile_path
+
+let fdo_names = ref false (* -fdo-names *)
+
+type fdo_layout =
+  | Greedy
+  | Ext_tsp
+
+let fdo_layout = ref Ext_tsp (* -fdo-layout *)
+
+let fdo_layout_of_string = function
+  | "greedy" -> Greedy
+  | "ext-tsp" -> Ext_tsp
+  | s -> Misc.fatal_errorf "Unknown -fdo-layout %s" s
 
 module Flambda2 = struct
   let debug = ref false (* -flambda2-debug *)

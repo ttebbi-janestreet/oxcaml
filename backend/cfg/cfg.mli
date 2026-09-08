@@ -144,6 +144,18 @@ val predecessor_labels : basic_block -> Label.t list
     of the function. *)
 val successor_labels : normal:bool -> exn:bool -> basic_block -> Label.Set.t
 
+(** The successor at each position of a terminator's positional edge label sets
+    (see [Debuginfo.edge_labels]): [ifso]/[ifnot] for boolean tests,
+    [lt]/[eq]/[gt](/[uo]) for comparisons, the arms of a switch; empty for other
+    terminators. *)
+val edge_label_positions : terminator -> Label.t array
+
+(** Every lowering that rearranges positional edge label sets checks that they
+    match the terminator's successor positions: a mismatch means a lowering lost
+    track of its edges, which would silently corrupt profiles. *)
+val check_edge_labels :
+  context:string -> terminator instruction -> 'a array -> unit
+
 val replace_successor_labels :
   t -> normal:bool -> exn:bool -> basic_block -> f:(Label.t -> Label.t) -> unit
 

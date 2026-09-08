@@ -143,6 +143,23 @@ let inline dacc ~apply ~unroll_to ~was_inline_always function_decl =
   | Local _, Alloc_heap (* This is allowed by subtyping *)
   | Local _, Alloc_local
   | Heap _, Alloc_heap ->
+    (* The call's pseudo-instrumentation label, as the decoded call graph would
+       label the call if it were not inlined out: the entry label of the callee
+       (with the riders on it: the calls inlined at its head) in the context of
+       the call site. It rides on the edges into the current region (see
+       [Inlined_call_labels]). *)
+    (match DE.fdo_region denv with
+    | Some region when DE.tracking_inlined_call_labels denv ->
+      let call_site =
+        Option.value ~default:[] (Debuginfo.callsite_label (Apply.dbg apply))
+      in
+      Inlined_call_labels.add_inlined_calls
+        (DE.inlined_call_labels denv)
+        region
+        (List.map
+           (fun (label : Debuginfo.branch_label) -> label.location @ call_site)
+           (Debuginfo.entry_labels (Code.dbg code)))
+    | Some _ | None -> ());
     let denv =
       DE.enter_inlined_apply ~called_code:code ~apply ~was_inline_always denv
     in

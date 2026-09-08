@@ -124,3 +124,9 @@ let rewrite t dbg =
   (* This could be optimized in terms of freshening uids, but for the moment use
      a more obviously-correct implementation. *)
   List.fold_left (fun dbg one_step -> One_step.rewrite one_step dbg) dbg t
+
+let specialize_edge_labels t dbg =
+  List.fold_left
+    (fun dbg (one_step : One_step.t) ->
+      Debuginfo.specialize_edge_labels ~site:one_step.dbg dbg)
+    dbg t

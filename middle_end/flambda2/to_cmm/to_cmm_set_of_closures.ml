@@ -82,7 +82,9 @@ let get_func_decl_params_arity t code_id =
     | (Curried _ | Tupled), _ -> Full_and_partial_application
   in
   let arity = kind, params_ty, result_machtype in
-  arity, closure_code_pointers, Code_metadata.dbg info
+  ( arity,
+    closure_code_pointers,
+    Debuginfo.without_edge_labels (Code_metadata.dbg info) )
 
 type for_static_sets =
   { closure_symbols : Symbol.t Function_slot.Map.t;
@@ -630,7 +632,8 @@ let debuginfo_for_set_of_closures env set =
   in
   (* Choose the debuginfo with the earliest source location. *)
   let dbg = match dbgs with [] -> Debuginfo.none | dbg :: _ -> dbg in
-  Env.add_inlined_debuginfo env dbg
+  (* The functions' entry labels belong to their code, not the set. *)
+  Env.add_inlined_debuginfo env (Debuginfo.without_edge_labels dbg)
 
 let let_static_set_of_closures0 env res closure_symbols
     (layout : Slot_offsets.Layout.t) set ~prev_updates =

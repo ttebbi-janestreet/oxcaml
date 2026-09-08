@@ -468,6 +468,36 @@ let name_if_not_var acc ccenv name simple kind body =
       [id, id_duid, kind]
       Not_user_visible (IR.Simple simple) ~body:(body id)
 
+(* The anchor of pseudo-instrumentation labels created in a function's body (see
+   [Debuginfo.branch_label]): the function's position, or, when it has none, the
+   enclosing anchor extended by a fresh index, like a branching construct. *)
+let function_anchor env (loc : L.scoped_location) =
+  match Debuginfo.to_items (Debuginfo.from_location loc) with
+  | item :: _ -> Debuginfo.item_level item
+  | [] ->
+    Fdo_location.nested_anchor ~anchor:(Env.branch_anchor env)
+      ~index:(Env.fresh_branch_index env)
+
+(* The pseudo-instrumentation labels of a switch: one per scrutinee value,
+   indexed by value so that the array stays meaningful when later simplification
+   deletes arms. [None] when labels are disabled. *)
+let switch_labels env (switch : IR.switch) =
+  if not (Oxcaml_flags.fdo_labels_enabled ())
+  then None
+  else
+    let num_edges =
+      List.fold_left
+        (fun acc (case, _, _, _, _) -> max acc (case + 1))
+        (match switch.failaction with None -> 0 | Some _ -> switch.numconsts)
+        switch.consts
+    in
+    if num_edges <= 0
+    then None
+    else
+      Some
+        (Debuginfo.create_edge_labels ~anchor:(Env.branch_anchor env)
+           ~index:(Env.fresh_branch_index env) ~num_edges)
+
 let rec cps acc env ccenv (lam : L.lambda) (k : cps_continuation)
     (k_exn : Continuation.t) : Expr_with_acc.t =
   match lam with
@@ -1553,7 +1583,7 @@ and cps_function env ~fid ~fuid ~(recursive : Recursive.t)
     Env.create ~current_unit:(Env.current_unit env)
       ~machine_width:(Env.machine_width env) ~return_continuation:body_cont
       ~exn_continuation:body_exn_cont ~my_region:my_region_stack_elt
-      ~my_alloc_region
+      ~my_alloc_region ~branch_anchor:(function_anchor env loc)
   in
   let exn_continuation : IR.exn_continuation =
     { exn_handler = body_exn_cont; extra_args = [] }
@@ -1745,15 +1775,27 @@ and cps_switch acc env ccenv (switch : L.lambda_switch) ~condition_dbg
       let block_switch : IR.switch =
         { numconsts = switch.sw_numblocks; consts = blocks; failaction }
       in
+      (* A switch with both constant and block arms is lowered to a switch on
+         [%is_int] leading to a block switch and a constant switch; each of the
+         (up to) three switches gets labels of its own. *)
+      let labelled (sw : IR.switch) =
+        match switch_labels env sw with
+        | None -> condition_dbg
+        | Some labels -> Debuginfo.with_edge_labels condition_dbg labels
+      in
+      let const_dbg = labelled const_switch in
+      let block_dbg = labelled block_switch in
       let build_switch scrutinee wrappers =
         let const_switch acc ccenv =
-          CC.close_switch acc ccenv ~condition_dbg scrutinee const_switch
+          CC.close_switch acc ccenv ~condition_dbg:const_dbg scrutinee
+            const_switch
         in
         let scrutinee_tag = Ident.create_local "scrutinee_tag" in
         let scrutinee_tag_duid = Flambda_debug_uid.none in
         let block_switch acc ccenv =
           let body acc ccenv =
-            CC.close_switch acc ccenv ~condition_dbg scrutinee_tag block_switch
+            CC.close_switch acc ccenv ~condition_dbg:block_dbg scrutinee_tag
+              block_switch
           in
           CC.close_let acc ccenv
             [ ( scrutinee_tag,
@@ -1802,10 +1844,11 @@ and cps_switch acc env ccenv (switch : L.lambda_switch) ~condition_dbg
           in
           let is_scrutinee_int = Ident.create_local "is_scrutinee_int" in
           let is_scrutinee_int_duid = Flambda_debug_uid.none in
+          let isint_dbg = labelled isint_switch in
           let isint_switch acc ccenv =
             let body acc ccenv =
-              CC.close_switch acc ccenv ~condition_dbg is_scrutinee_int
-                isint_switch
+              CC.close_switch acc ccenv ~condition_dbg:isint_dbg
+                is_scrutinee_int isint_switch
             in
             let current_region = Env.current_region env in
             let region =
@@ -1863,6 +1906,9 @@ let lambda_to_flambda ~mode ~machine_width ~big_endian ~cmx_loader
     Env.create ~current_unit:compilation_unit ~machine_width
       ~return_continuation ~exn_continuation ~my_region:None
       ~my_alloc_region:toplevel_my_alloc_region
+      ~branch_anchor:
+        (Fdo_location.unit_anchor
+           (Compilation_unit.full_path_as_string compilation_unit))
   in
   let program acc ccenv =
     cps_tail acc env ccenv lam return_continuation exn_continuation

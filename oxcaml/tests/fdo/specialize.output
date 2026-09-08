@@ -1,0 +1,285 @@
+*** FDO block frequencies for camlSpecialize__classify_0_10_code
+  entry: [specialize.ml:30:22]
+  block 1: measured 180, repaired 180
+  block 101: measured 180, repaired 180
+  block 103: measured 40, repaired 40
+  block 108: measured 140, repaired 140
+  block 111: measured 40, repaired 40
+  block 113: measured 100, repaired 100
+  edge 1 -> 101: 180
+  edge 101 -> 108 [specialize.ml:30:22:0:0]: 140
+  edge 108 -> 113 [specialize.ml:30:22:1:0]: 100
+  edge 101 -> 103 [specialize.ml:30:22:0:1]: 40
+  edge 108 -> 111 [specialize.ml:30:22:1:1]: 40
+cfg for camlSpecialize__classify_0_10_code
+  block 1
+  block 101
+  block 108
+  block 113
+  block 111
+  block 103
+*** FDO block frequencies for camlSpecialize__bump_1_11_code
+  entry: [specialize.ml:38:18]
+  block 1: measured 40, repaired 40
+  block 120: measured 0, repaired 40
+  edge 1 -> 120: 40
+cfg for camlSpecialize__bump_1_11_code
+  block 1
+  block 120
+*** FDO block frequencies for camlSpecialize__tally_2_12_code
+  entry: [specialize.ml:40:25]
+  block 1: measured 40, repaired 40
+  block 124: measured 0, repaired 40
+  edge 1 -> 124: 40
+cfg for camlSpecialize__tally_2_12_code
+  block 1
+  block 124
+*** FDO block frequencies for camlSpecialize__Make_3_13_code: no samples
+  entry: [specialize.ml:42:12]
+cfg for camlSpecialize__Make_3_13_code
+  block 1
+  block 128
+*** FDO block frequencies for camlSpecialize__count_4_14_code: no samples
+  entry: [specialize.ml:46:27]
+  edge 145 -> 150 [specialize.ml:46:27:0:1] +[specialize.ml:30:22 <- specialize.ml:50:13]
+  edge 145 -> 200 [specialize.ml:46:27:0:0]
+  edge 164 -> 167 [specialize.ml:30:22:1:1 <- specialize.ml:50:13]
+  edge 164 -> 169 [specialize.ml:30:22:1:0 <- specialize.ml:50:13]
+  edge 181 -> 183 [specialize.ml:46:27:2:0]
+  edge 181 -> 186 [specialize.ml:46:27:2:1]
+  edge 181 -> 189 [specialize.ml:46:27:2:2] +[specialize.ml:38:18 <- specialize.ml:54:8]
+  edge 150 -> 158 [specialize.ml:30:22:0:1 <- specialize.ml:50:13]
+  edge 150 -> 164 [specialize.ml:30:22:0:0 <- specialize.ml:50:13]
+  edge 158 -> 181 [specialize.ml:46:27:1:0]
+  edge 158 -> 178 [specialize.ml:46:27:1:1]
+cfg for camlSpecialize__count_4_14_code
+  block 1
+  block 136
+  block 145
+  block 150
+  block 158
+  block 164
+  block 167
+  block 169
+  block 178
+  block 181
+  block 183
+  block 186
+  block 189
+  block 192
+  block 195
+  block 200
+*** FDO block frequencies for camlSpecialize__count_4_18_code
+  entry: [specialize.ml:46:27:specialize.ml:64:17:specialize.ml:70:13]
+  call from block 277 to caml_fdo_c0ffa1b598949f13: 10
+  block 1: measured 1, repaired 1
+  block 227: measured 0, repaired 1
+  block 236: measured 101, repaired 101
+  block 241: measured 100, repaired 100
+  block 247: measured 10, repaired 10
+  block 253: measured 90, repaired 90
+  block 255: measured 10, repaired 10
+  block 257: measured 80, repaired 80
+  block 266: measured 0, repaired 80
+  block 269: measured 20, repaired 20
+  block 271: measured 5, repaired 5
+  block 274: measured 5, repaired 5
+  block 277: measured 10, repaired 10
+  block 280: measured 0, repaired 10
+  block 283: measured 0, repaired 99
+  block 288: measured 1, repaired 1
+  edge 236 -> 241 [specialize.ml:46:27:0:1:specialize.ml:64:17:specialize.ml:70:13] +[specialize.ml:30:22 <- specialize.ml:50:13:specialize.ml:64:17:specialize.ml:70:13]: 100
+  edge 283 -> 236: 99
+  edge 241 -> 253 [specialize.ml:30:22:0:0 <- specialize.ml:50:13:specialize.ml:64:17:specialize.ml:70:13]: 90
+  edge 253 -> 257 [specialize.ml:30:22:1:0 <- specialize.ml:50:13:specialize.ml:64:17:specialize.ml:70:13]: 80
+  edge 257 -> 266: 80
+  edge 266 -> 283: 80
+  edge 241 -> 247 [specialize.ml:30:22:0:1 <- specialize.ml:50:13:specialize.ml:64:17:specialize.ml:70:13]: 10
+  edge 247 -> 269 [specialize.ml:46:27:1:0:specialize.ml:64:17:specialize.ml:70:13]: 10
+  edge 253 -> 255 [specialize.ml:30:22:1:1 <- specialize.ml:50:13:specialize.ml:64:17:specialize.ml:70:13]: 10
+  edge 255 -> 269: 10
+  edge 269 -> 277 [specialize.ml:46:27:2:2:specialize.ml:64:17:specialize.ml:70:13] +[specialize.ml:38:18 <- specialize.ml:54:8:specialize.ml:64:17:specialize.ml:70:13]: 10
+  edge 277 -> 280: 10
+  edge 280 -> 283: 10
+  edge 269 -> 271 [specialize.ml:46:27:2:0:specialize.ml:64:17:specialize.ml:70:13]: 5
+  edge 269 -> 274 [specialize.ml:46:27:2:1:specialize.ml:64:17:specialize.ml:70:13]: 5
+  edge 271 -> 283: 5
+  edge 274 -> 283: 5
+  edge 1 -> 227: 1
+  edge 227 -> 236: 1
+  edge 236 -> 288 [specialize.ml:46:27:0:0:specialize.ml:64:17:specialize.ml:70:13]: 1
+  edge 247 -> 266 [specialize.ml:46:27:1:1:specialize.ml:64:17:specialize.ml:70:13]: 0
+cfg for camlSpecialize__count_4_18_code
+  block 1
+  block 227
+  block 274
+  block 271
+  block 257
+  block 266
+  block 283
+  block 236
+  block 241
+  block 253
+  block 255
+  block 269
+  block 277
+  block 280
+  block 247
+  block 288
+*** FDO block frequencies for camlSpecialize__count_4_20_code
+  entry: [specialize.ml:46:27:specialize.ml:64:17:specialize.ml:74:14]
+  call from block 365 to caml_fdo_c0ffa1b598949f13: 30
+  block 1: measured 1, repaired 81
+  block 315: measured 0, repaired 81
+  block 324: measured 81, repaired 81
+  block 329: measured 80, repaired 80
+  block 335: measured 30, repaired 30
+  block 341: measured 50, repaired 50
+  block 343: measured 30, repaired 30
+  block 345: measured 20, repaired 20
+  block 354: measured 0, repaired 20
+  block 357: measured 60, repaired 60
+  block 359: measured 15, repaired 15
+  block 362: measured 15, repaired 15
+  block 365: measured 30, repaired 30
+  block 368: measured 0, repaired 30
+  block 371: measured 0, repaired 30
+  block 376: measured 1, repaired 1
+  edge 1 -> 315: 81
+  edge 315 -> 324: 81
+  edge 324 -> 329 [specialize.ml:46:27:0:1:specialize.ml:64:17:specialize.ml:74:14] +[specialize.ml:30:22 <- specialize.ml:50:13:specialize.ml:64:17:specialize.ml:74:14]: 80
+  edge 329 -> 341 [specialize.ml:30:22:0:0 <- specialize.ml:50:13:specialize.ml:64:17:specialize.ml:74:14]: 50
+  edge 329 -> 335 [specialize.ml:30:22:0:1 <- specialize.ml:50:13:specialize.ml:64:17:specialize.ml:74:14]: 30
+  edge 335 -> 357 [specialize.ml:46:27:1:0:specialize.ml:64:17:specialize.ml:74:14]: 30
+  edge 341 -> 343 [specialize.ml:30:22:1:1 <- specialize.ml:50:13:specialize.ml:64:17:specialize.ml:74:14]: 30
+  edge 343 -> 357: 30
+  edge 357 -> 365 [specialize.ml:46:27:2:2:specialize.ml:64:17:specialize.ml:74:14] +[specialize.ml:38:18 <- specialize.ml:54:8:specialize.ml:64:17:specialize.ml:74:14]: 30
+  edge 365 -> 368: 30
+  edge 368 -> 371: 30
+  edge 371 -> 324: 30
+  edge 341 -> 345 [specialize.ml:30:22:1:0 <- specialize.ml:50:13:specialize.ml:64:17:specialize.ml:74:14]: 20
+  edge 345 -> 354: 20
+  edge 354 -> 371: 20
+  edge 357 -> 359 [specialize.ml:46:27:2:0:specialize.ml:64:17:specialize.ml:74:14]: 15
+  edge 357 -> 362 [specialize.ml:46:27:2:1:specialize.ml:64:17:specialize.ml:74:14]: 15
+  edge 359 -> 371: 15
+  edge 362 -> 371: 15
+  edge 324 -> 376 [specialize.ml:46:27:0:0:specialize.ml:64:17:specialize.ml:74:14]: 1
+  edge 335 -> 354 [specialize.ml:46:27:1:1:specialize.ml:64:17:specialize.ml:74:14]: 0
+cfg for camlSpecialize__count_4_20_code
+  block 1
+  block 315
+  block 324
+  block 329
+  block 341
+  block 343
+  block 357
+  block 365
+  block 368
+  block 371
+  block 362
+  block 359
+  block 335
+  block 345
+  block 354
+  block 376
+*** FDO block frequencies for camlSpecialize__count_4_16_code: no samples
+  entry: [specialize.ml:46:27:specialize.ml:64:17]
+  edge 448 -> 450 [specialize.ml:46:27:2:0:specialize.ml:64:17]
+  edge 448 -> 453 [specialize.ml:46:27:2:1:specialize.ml:64:17]
+  edge 448 -> 456 [specialize.ml:46:27:2:2:specialize.ml:64:17] +[specialize.ml:38:18 <- specialize.ml:54:8:specialize.ml:64:17]
+  edge 417 -> 425 [specialize.ml:30:22:0:1 <- specialize.ml:50:13:specialize.ml:64:17]
+  edge 417 -> 431 [specialize.ml:30:22:0:0 <- specialize.ml:50:13:specialize.ml:64:17]
+  edge 425 -> 448 [specialize.ml:46:27:1:0:specialize.ml:64:17]
+  edge 425 -> 445 [specialize.ml:46:27:1:1:specialize.ml:64:17]
+  edge 412 -> 417 [specialize.ml:46:27:0:1:specialize.ml:64:17] +[specialize.ml:30:22 <- specialize.ml:50:13:specialize.ml:64:17]
+  edge 412 -> 467 [specialize.ml:46:27:0:0:specialize.ml:64:17]
+  edge 431 -> 434 [specialize.ml:30:22:1:1 <- specialize.ml:50:13:specialize.ml:64:17]
+  edge 431 -> 436 [specialize.ml:30:22:1:0 <- specialize.ml:50:13:specialize.ml:64:17]
+cfg for camlSpecialize__count_4_16_code
+  block 1
+  block 403
+  block 412
+  block 417
+  block 425
+  block 431
+  block 434
+  block 436
+  block 445
+  block 448
+  block 450
+  block 453
+  block 456
+  block 459
+  block 462
+  block 467
+*** FDO block frequencies for camlSpecialize__Outer_5_15_code: no samples
+  entry: [specialize.ml:63:13]
+cfg for camlSpecialize__Outer_5_15_code
+  block 1
+  block 494
+*** FDO block frequencies for camlSpecialize__run_6_17_code: no samples
+  entry: [specialize.ml:66:25]
+cfg for camlSpecialize__run_6_17_code
+  block 1
+  block 504
+*** FDO block frequencies for camlSpecialize__run_6_19_code
+  entry: [specialize.ml:66:25:specialize.ml:70:13]
+  call from block 511 to caml_fdo_475c49a170a7be76: 1
+  block 1: measured 1, repaired 1
+  block 511: measured 0, repaired 1
+  edge 1 -> 511: 1
+cfg for camlSpecialize__run_6_19_code
+  block 1
+  block 511
+*** FDO block frequencies for camlSpecialize__run_6_21_code
+  entry: [specialize.ml:66:25:specialize.ml:74:14]
+  call from block 516 to caml_fdo_6df2abca12c50963: 1
+  block 1: measured 1, repaired 1
+  block 516: measured 0, repaired 1
+  edge 1 -> 516: 1
+cfg for camlSpecialize__run_6_21_code
+  block 1
+  block 516
+*** FDO block frequencies for camlSpecialize__fn[specialize.ml:84,37--70]_9_24_code
+  entry: [specialize.ml:84:37]
+  call from block 521 to caml_fdo_ae13a2f8943e77bb: 1
+  call from block 523 to caml_fdo_34601ecc70d24c76: 1
+  block 1: measured 1, repaired 1
+  block 521: measured 0, repaired 1
+  block 523: measured 0, repaired 1
+  block 525: measured 0, repaired 1
+  edge 1 -> 521: 1
+  edge 521 -> 523: 1
+  edge 523 -> 525: 1
+cfg for camlSpecialize__fn[specialize.ml:84,37--70]_9_24_code
+  block 1
+  block 521
+  block 523
+  block 525
+*** FDO block frequencies for camlSpecialize__entry: no samples
+cfg for camlSpecialize__entry
+  block 1
+  block 544
+  block 546
+  block 550
+  block 554
+  block 556
+  block 558
+  block 561
+  block 563
+  block 570
+  block 575
+  block 579
+  block 583
+  block 585
+  block 587
+  block 590
+  block 592
+  block 599
+  block 601
+  block 608
+  block 610
+  block 612
+  block 613
+  block 619

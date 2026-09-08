@@ -35,9 +35,18 @@ val create :
   exn_continuation:Continuation.t ->
   my_region:Region_stack_element.t option ->
   my_alloc_region:Ident.t ->
+  branch_anchor:string list ->
   t
 
 val current_unit : t -> Compilation_unit.t
+
+(** The identity of branches for pseudo-instrumentation labels (see
+    [Debuginfo.branch_label]): the anchor of the function whose body is being
+    translated, and a counter numbering the branching constructs of that body in
+    translation order. *)
+val branch_anchor : t -> string list
+
+val fresh_branch_index : t -> int
 
 val machine_width : t -> Target_system.Machine_width.t
 

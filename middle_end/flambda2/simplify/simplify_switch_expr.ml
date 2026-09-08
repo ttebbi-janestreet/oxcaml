@@ -647,8 +647,43 @@ let rebuild_affine_switch_to_same_destination uacc ~dacc_before_switch
       rebuild_affine_expr tagged_scrutinee K.value
         K.Standard_int.Tagged_immediate Reg_width_const.tagged_immediate)
 
+(* The labels of the calls inlined in the handlers the arms lead to ride on the
+   arms (see [Inlined_call_labels]): on the switch's edge label sets, indexed by
+   discriminant. When every arm leads to the same continuation the switch is
+   about to disappear (in one way or another, below) and the current region
+   simply continues into that handler. *)
+let attach_inlined_call_labels ~dacc_before_switch ~arms condition_dbg =
+  let denv = DA.denv dacc_before_switch in
+  match DE.fdo_region denv with
+  | Some region when DE.tracking_inlined_call_labels denv -> (
+    let labels = DE.inlined_call_labels denv in
+    let conts =
+      TI.Map.fold
+        (fun _ (action, _, _, _) conts ->
+          Continuation.Set.add (AC.continuation action) conts)
+        arms Continuation.Set.empty
+    in
+    match Continuation.Set.get_singleton conts with
+    | Some cont ->
+      Inlined_call_labels.add_continuation_into labels region cont;
+      condition_dbg
+    | None ->
+      TI.Map.fold
+        (fun discriminant (action, _, _, _) dbg ->
+          match TI.to_int_option discriminant with
+          | Some position ->
+            Debuginfo.add_riders dbg ~position
+              (Inlined_call_labels.labels_into labels
+                 (Handler (AC.continuation action)))
+          | None -> dbg)
+        arms condition_dbg)
+  | Some _ | None -> condition_dbg
+
 let rebuild_switch ~arms ~condition_dbg ~scrutinee ~scrutinee_ty
     ~dacc_before_switch uacc ~after_rebuild =
+  let condition_dbg =
+    attach_inlined_call_labels ~dacc_before_switch ~arms condition_dbg
+  in
   let new_let_conts, arms, mergeable_arms, identity_arms, not_arms =
     TI.Map.fold (rebuild_arm uacc) arms
       ([], TI.Map.empty, No_arms, TI.Map.empty, TI.Map.empty)

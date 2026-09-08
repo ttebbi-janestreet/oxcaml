@@ -1966,6 +1966,91 @@ let prologue_stack_offset () =
   assert !frame_required;
   frame_size () - 8 - if fp then 8 else 0
 
+(* FDO metadata of the current function (see [Fdo_metadata]), collected while
+   emitting when pseudo-instrumentation labels are enabled: the conditional
+   jumps carrying resolved edge labels and the calls and tail jumps to OCaml
+   functions carrying call site labels, recorded with their output position.
+   After peephole optimization has run, the surviving ones are given labels
+   ([X86_proc.label_recorded_branches]) and their edge labels are recorded at
+   the instruction's address. *)
+let recorded_branches : (X86_proc.output_pos * Debuginfo.t) list ref = ref []
+(* most recent first *)
+
+let fdo_metadata_enabled () = Oxcaml_flags.fdo_labels_enabled ()
+
+(* A conditional jump: recorded when its labels are resolved (the debug info of
+   a compiler-generated test may carry the labels of something else, e.g. the
+   call site of the application it belongs to). *)
+let record_jcc ~pos ~dbg =
+  match Debuginfo.edge_labels dbg with
+  | Some (Debuginfo.Resolved _) when fdo_metadata_enabled () ->
+    recorded_branches := (pos, dbg) :: !recorded_branches
+  | Some (Debuginfo.Resolved _ | Debuginfo.Positional _ | Debuginfo.Callsite _)
+  | None ->
+    ()
+
+(* The alias symbols naming functions by entry label for the linker's call graph
+   profile (see [Fdo_call_graph]) defined so far in this compilation unit: a
+   label is defined once even when several functions share it (the unboxed
+   wrapper of a function shares its position). *)
+let defined_aliases : (string, unit) Hashtbl.t = Hashtbl.create 16
+
+(* With a profile, define the alias of a function whose entry the profile knows
+   (calls to it may be edges of other units' call graphs): a weak hidden symbol
+   at its entry, in its own section, which is what the linker resolves it to. *)
+let define_fdo_aliases (fun_dbg : Debuginfo.t) =
+  match Oxcaml_flags.fdo_profile () with
+  | None -> ()
+  | Some profile ->
+    List.iter
+      (fun (label : Debuginfo.branch_label) ->
+        if
+          (not label.rider)
+          && Int64.compare
+               (Source_position_profile.count_for_location profile
+                  label.location)
+               0L
+             > 0
+        then
+          let alias =
+            Fdo_call_graph.alias_symbol (Fdo_location.hash label.location)
+          in
+          let name = S.encode alias in
+          if not (Hashtbl.mem defined_aliases name)
+          then (
+            Hashtbl.replace defined_aliases name ();
+            D.weak alias;
+            D.hidden alias;
+            D.define_symbol_label ~section:Text alias))
+      (Debuginfo.entry_labels fun_dbg)
+
+(* The instruction just emitted is a call or tail jump to an OCaml function. *)
+let record_call ~dbg =
+  match Debuginfo.edge_labels dbg with
+  | Some (Debuginfo.Callsite _) when fdo_metadata_enabled () ->
+    recorded_branches
+      := (X86_proc.current_output_pos (), dbg) :: !recorded_branches
+  | Some (Debuginfo.Resolved _ | Debuginfo.Positional _ | Debuginfo.Callsite _)
+  | None ->
+    ()
+
+(* [rev_positions] are the output positions of the conditional jumps just
+   emitted for one [Lcondbranch] with debug info [dbg], most recent first. Only
+   the last jump can fall through to the instruction's fallthrough successor; an
+   earlier one (of a two-jump float test) falls through to the next jump and so
+   carries no fallthrough labels. *)
+let record_condbranch_jccs dbg ~rev_positions =
+  let cascade_dbg =
+    match Debuginfo.edge_labels dbg with
+    | Some (Debuginfo.Resolved { taken; fallthrough = _ }) ->
+      Debuginfo.with_edge_labels dbg
+        (Debuginfo.Resolved { taken; fallthrough = [] })
+    | Some (Debuginfo.Positional _ | Debuginfo.Callsite _) | None -> dbg
+  in
+  List.iteri
+    (fun i pos -> record_jcc ~pos ~dbg:(if i = 0 then dbg else cascade_dbg))
+    rev_positions
+
 (* Emit an instruction *)
 let emit_instr ~first ~last ~fallthrough i =
   let open Simd_instrs in
@@ -2077,12 +2162,16 @@ let emit_instr ~first ~last ~fallthrough i =
     load_symbol_addr s (res i 0)
   | Lcall_op Lcall_ind ->
     I.call (arg i 0);
+    record_call ~dbg:i.dbg;
     record_frame i.live (Dbg_other i.dbg)
   | Lcall_op (Lcall_imm { func }) ->
     add_used_symbol func.sym_name;
     emit_call func;
+    record_call ~dbg:i.dbg;
     record_frame i.live (Dbg_other i.dbg)
-  | Lcall_op Ltailcall_ind -> I.jmp (arg i 0)
+  | Lcall_op Ltailcall_ind ->
+    I.jmp (arg i 0);
+    record_call ~dbg:i.dbg
   | Lcall_op (Ltailcall_imm { func }) ->
     if String.equal func.sym_name !function_name
     then
@@ -2092,7 +2181,8 @@ let emit_instr ~first ~last ~fallthrough i =
         I.jmp (emit_label_arg ~section:Text tailrec_entry_point)
     else (
       add_used_symbol func.sym_name;
-      emit_jump func)
+      emit_jump func;
+      record_call ~dbg:i.dbg)
   | Lcall_op (Lextcall { func; alloc; stack_ofs; stack_align; _ }) ->
     add_used_symbol func;
     if stack_ofs > 0
@@ -2569,18 +2659,62 @@ let emit_instr ~first ~last ~fallthrough i =
     emit_Llabel fallthrough lbl section_name
   | Lbranch lbl -> I.jmp (emit_label_arg ~section:Text lbl)
   | Lcondbranch (tst, lbl) ->
-    emit_test i tst ~taken:(fun c -> I.j c (emit_label_arg ~section:Text lbl))
+    let jccs = ref [] in
+    emit_test i tst ~taken:(fun c ->
+        I.j c (emit_label_arg ~section:Text lbl);
+        jccs := X86_proc.current_output_pos () :: !jccs);
+    record_condbranch_jccs i.dbg ~rev_positions:!jccs
   | Lcondbranch3 (lbl0, lbl1, lbl2) -> (
+    (* The three jumps share one Linear instruction, so linearization could not
+       resolve edge labels per jump; do it here, where each jump is emitted
+       individually. Positions are [lt], [eq], [gt] in that order, matching the
+       positional label sets. Only the last emitted jump can fall through to a
+       successor: the positions with no explicit jump. *)
+    let last_emitted =
+      if Option.is_some lbl2 then 2 else if Option.is_some lbl1 then 1 else 0
+    in
+    let dbg_of_position =
+      match Debuginfo.edge_labels i.dbg with
+      | Some (Debuginfo.Positional ([| _; _; _ |] as sets)) ->
+        let jumps = [| lbl0; lbl1; lbl2 |] in
+        let fallthrough =
+          List.concat
+            (List.filteri
+               (fun j _ -> Option.is_none jumps.(j))
+               (Array.to_list sets))
+        in
+        fun position ->
+          let fallthrough =
+            if position = last_emitted then fallthrough else []
+          in
+          Debuginfo.with_edge_labels i.dbg
+            (Debuginfo.Resolved { taken = sets.(position); fallthrough })
+      | Some
+          (Debuginfo.Positional _ | Debuginfo.Resolved _ | Debuginfo.Callsite _)
+      | None ->
+        fun _ -> i.dbg
+    in
+    let record_branch position =
+      record_jcc
+        ~pos:(X86_proc.current_output_pos ())
+        ~dbg:(dbg_of_position position)
+    in
     I.cmp (int 1) (arg i 0);
     (match lbl0 with
     | None -> ()
-    | Some lbl -> I.jb (emit_label_arg ~section:Text lbl));
+    | Some lbl ->
+      I.jb (emit_label_arg ~section:Text lbl);
+      record_branch 0);
     (match lbl1 with
     | None -> ()
-    | Some lbl -> I.je (emit_label_arg ~section:Text lbl));
+    | Some lbl ->
+      I.je (emit_label_arg ~section:Text lbl);
+      record_branch 1);
     match lbl2 with
     | None -> ()
-    | Some lbl -> I.ja (emit_label_arg ~section:Text lbl))
+    | Some lbl ->
+      I.ja (emit_label_arg ~section:Text lbl);
+      record_branch 2)
   | Lswitch jumptbl ->
     let lbl = L.create Text in
     (* rax and rdx are clobbered by the Lswitch, meaning that no variable that
@@ -2734,6 +2868,17 @@ let fundecl fundecl =
          ...
   *)
   D.define_joint_label_and_symbol ~section:Text fundecl_sym;
+  define_fdo_aliases fundecl.fun_dbg;
+  recorded_branches := [];
+  (* The function's entry edge (and the riders of the calls inlined at its
+     head): counted whenever a call or tail jump lands on the function. *)
+  if fdo_metadata_enabled ()
+  then
+    Fdo_metadata.record Target
+      (L.create_label_for_local_symbol Text fundecl_sym)
+      (List.map
+         (fun (label : Debuginfo.branch_label) -> label.location)
+         (Debuginfo.entry_labels fundecl.fun_dbg));
   emit_debug_info fundecl.fun_dbg;
   D.cfi_startproc ();
   D.comment ("LLVM-MCA-BEGIN " ^ !function_name);
@@ -2743,6 +2888,21 @@ let fundecl fundecl =
   emit_all ~first:true ~fallthrough:true fundecl.fun_body;
   X86_proc.peephole_optimize_from fun_body_start;
   let fun_body_end = current_output_pos () in
+  if fdo_metadata_enabled ()
+  then (
+    let locations = List.map (fun (l : Debuginfo.branch_label) -> l.location) in
+    X86_proc.label_recorded_branches ~from_pos:fun_body_start
+      ~to_pos:fun_body_end
+      ~recorded:(List.rev !recorded_branches)
+    |> List.iter (fun (label, dbg) ->
+        match Debuginfo.edge_labels dbg with
+        | None | Some (Debuginfo.Positional _) -> ()
+        | Some (Debuginfo.Resolved { taken; fallthrough }) ->
+          Fdo_metadata.record Taken label (locations taken);
+          Fdo_metadata.record Fallthrough label (locations fallthrough)
+        | Some (Debuginfo.Callsite location) ->
+          Fdo_metadata.record Callsite label [location]);
+    recorded_branches := []);
   List.iter emit_call_gc !call_gc_sites;
   List.iter emit_local_realloc !local_realloc_sites;
   let gc_jump_pads_end = current_output_pos () in
@@ -2792,6 +2952,9 @@ let data l =
 
 let reset_all () =
   X86_proc.reset_asm_code ();
+  Fdo_metadata.reset ();
+  Fdo_call_graph.reset ();
+  Hashtbl.reset defined_aliases;
   Emitaux.reset ();
   reset_debug_info ();
   (* PR#5603 *)
@@ -3190,6 +3353,8 @@ let end_assembly () =
   D.size frametable_sym;
   D.data ();
   Probe_emission.emit_probe_notes ~add_def_symbol;
+  Fdo_metadata.emit_section ();
+  Fdo_call_graph.emit_section ();
   emit_trap_notes ();
   D.mark_stack_non_executable ();
   (* Note that [mark_stack_non_executable] switches the section on Linux. *)

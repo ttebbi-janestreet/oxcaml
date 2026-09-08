@@ -171,3 +171,8 @@ val merge : t -> from_apply_expr:t -> t
     and the uids enable disambiguation between different instances of inlining
     the same functions. *)
 val rewrite : t -> Debuginfo.t -> Debuginfo.t
+
+(** For debuginfo from the body of a function that the inlinings [t] copied
+    (see [Debuginfo.specialize_edge_labels]): only its pseudo-instrumentation
+    labels are rewritten, its positions and DWARF are left alone. *)
+val specialize_edge_labels : t -> Debuginfo.t -> Debuginfo.t

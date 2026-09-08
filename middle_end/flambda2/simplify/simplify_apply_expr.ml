@@ -44,7 +44,17 @@ let record_free_names_of_apply_as_used0 apply ~use_id ~exn_cont_use_id data_flow
     ~exn_cont:(exn_cont_use_id, exn_cont)
     ~result_cont ~result_arity:(Apply.return_arity apply) data_flow
 
+(* For applications that are not inlined out. *)
 let record_free_names_of_apply_as_used dacc ~use_id ~exn_cont_use_id apply =
+  (* The current region continues into the return continuation's handler (see
+     [Inlined_call_labels]). *)
+  let denv = DA.denv dacc in
+  (match Apply.continuation apply, DE.fdo_region denv with
+  | Return k, Some region when DE.tracking_inlined_call_labels denv ->
+    Inlined_call_labels.add_continuation_into
+      (DE.inlined_call_labels denv)
+      region k
+  | (Return _ | Never_returns), (Some _ | None) -> ());
   DA.map_flow_acc dacc
     ~f:(record_free_names_of_apply_as_used0 ~use_id ~exn_cont_use_id apply)
 

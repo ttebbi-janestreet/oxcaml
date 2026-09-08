@@ -29,7 +29,43 @@ open! Int_replace_polymorphic_compare
 module C = Cfg
 module Dll = Doubly_linked_list
 
+(* The unconditional jump replacing a block's terminator. Pseudo-instrumentation
+   labels describe the edges of the conditional it was, so they are dropped. *)
+let always (block : C.basic_block) label : C.terminator C.instruction =
+  { block.terminator with
+    desc = Always label;
+    arg = [||];
+    res = [||];
+    dbg = Debuginfo.without_edge_labels block.terminator.dbg
+  }
+
 (* Convert simple [Switch] to branches. *)
+
+(* When the switch carries pseudo-instrumentation labels (one set per scrutinee
+   value, like its label array), move them onto the successors of the int test
+   replacing it: each successor covers a run of values and carries the union of
+   their label sets. *)
+let switch_edge_labels (block : C.basic_block) ~len ~runs =
+  match Debuginfo.edge_labels block.terminator.dbg with
+  | None | Some (Debuginfo.Resolved _ | Debuginfo.Callsite _) ->
+    block.terminator.dbg
+  | Some (Debuginfo.Positional sets) ->
+    if Array.length sets <> len
+    then
+      Misc.fatal_errorf
+        "Simplify_terminator: %d edge label sets for a switch of %d values"
+        (Array.length sets) len
+    else
+      let run (lo, hi) =
+        let labels = ref [] in
+        for value = lo to hi do
+          labels := sets.(value) @ !labels
+        done;
+        !labels
+      in
+      Debuginfo.with_edge_labels block.terminator.dbg
+        (Debuginfo.Positional (Array.map run runs))
+
 let simplify_switch (block : C.basic_block) labels =
   let len = Array.length labels in
   if len < 1
@@ -50,8 +86,7 @@ let simplify_switch (block : C.basic_block) labels =
   match labels_with_counts with
   | [(l, _)] ->
     (* All labels are the same and equal to l *)
-    block.terminator
-      <- { block.terminator with desc = Always l; arg = [||]; res = [||] }
+    block.terminator <- always block l
   | [(l0, n); (ln, k)] ->
     assert (Label.equal labels.(0) l0);
     assert (Label.equal labels.(n) ln);
@@ -60,7 +95,10 @@ let simplify_switch (block : C.basic_block) labels =
       C.Int_test
         { is_signed = Unsigned; imm = Some n; lt = l0; eq = ln; gt = ln }
     in
-    block.terminator <- { block.terminator with desc }
+    let dbg =
+      switch_edge_labels block ~len ~runs:[| 0, n - 1; n, n; n + 1, len - 1 |]
+    in
+    block.terminator <- { block.terminator with desc; dbg }
   | [(l0, m); (l1, 1); (l2, n)] when Label.equal l0 l2 ->
     assert (Label.equal labels.(0) l0);
     assert (Label.equal labels.(m) l1);
@@ -70,7 +108,10 @@ let simplify_switch (block : C.basic_block) labels =
       C.Int_test
         { is_signed = Unsigned; imm = Some m; lt = l0; eq = l1; gt = l0 }
     in
-    block.terminator <- { block.terminator with desc }
+    let dbg =
+      switch_edge_labels block ~len ~runs:[| 0, m - 1; m, m; m + 1, len - 1 |]
+    in
+    block.terminator <- { block.terminator with desc; dbg }
   | [(l0, 1); (l1, 1); (l2, n)] ->
     assert (Label.equal labels.(0) l0);
     assert (Label.equal labels.(1) l1);
@@ -80,7 +121,10 @@ let simplify_switch (block : C.basic_block) labels =
       C.Int_test
         { is_signed = Unsigned; imm = Some 1; lt = l0; eq = l1; gt = l2 }
     in
-    block.terminator <- { block.terminator with desc }
+    let dbg =
+      switch_edge_labels block ~len ~runs:[| 0, 0; 1, 1; 2, len - 1 |]
+    in
+    block.terminator <- { block.terminator with desc; dbg }
   | _ -> ()
 
 (* CR-soon xclerc for xclerc: extend to other constants. *)
@@ -443,8 +487,7 @@ let block_known_values (cfg : Cfg.t) (block : C.basic_block)
     match evaluate_terminator known_values block.terminator with
     | None -> false
     | Some succ ->
-      block.terminator
-        <- { block.terminator with desc = Always succ; arg = [||]; res = [||] };
+      block.terminator <- always block succ;
       true)
   else false
 
@@ -489,12 +532,7 @@ let block (cfg : C.t) (block : C.basic_block) : bool =
       in
       match new_successor with
       | Some succ ->
-        block.terminator
-          <- { block.terminator with
-               desc = Always succ;
-               arg = [||];
-               res = [||]
-             };
+        block.terminator <- always block succ;
         true
       | None -> (
         if
@@ -530,8 +568,7 @@ let block (cfg : C.t) (block : C.basic_block) : bool =
     if Label.Set.cardinal labels = 1
     then (
       let l = Label.Set.min_elt labels in
-      block.terminator
-        <- { block.terminator with desc = Always l; arg = [||]; res = [||] };
+      block.terminator <- always block l;
       false)
     else
       block_known_values cfg block ~is_after_regalloc

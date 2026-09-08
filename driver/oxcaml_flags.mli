@@ -17,6 +17,7 @@
 (** OxCaml specific command line flags *)
 
 val dump_cfg : bool ref
+val dump_fdo : bool ref
 val cfg_invariants : bool ref
 val regalloc : Clflags.Register_allocator.t ref
 val default_regalloc_linscan_threshold : int
@@ -137,6 +138,38 @@ val dump_llvmir : bool ref
 val keep_llvmir : bool ref
 val llvm_path : string option ref
 val llvm_flags : string ref
+
+val fdo_profile_path : string option ref
+
+(** The source-position FDO profile named by [-fdo-profile], loaded once on
+    first call (or [None] if the flag is unset). Raises
+    {!Source_position_profile.Error} if the profile is malformed. *)
+val fdo_profile : unit -> Source_position_profile.t option
+
+val fdo_labels : bool ref
+
+(** Whether to create pseudo-instrumentation labels for branching constructs
+    (and emit the "fdo_metadata" section describing the emitted code and
+    conditional branches): when [-fdo-labels] was passed, or when a profile is
+    being consumed via [-fdo-profile] (whose edge counts are matched back
+    against the labels). *)
+val fdo_labels_enabled : unit -> bool
+
+(** [-fdo-names]: also record in the "fdo_metadata" section the names of the
+    locations it refers to by hash, so that oxcaml-fdo-decode can print a
+    profile readably. *)
+val fdo_names : bool ref
+
+(** The block layout algorithm of [-fdo-profile]: ext-TSP ([Cfg_fdo_ext_tsp],
+    as in BOLT, the default) or the greedy one
+    ([Cfg_fdo_layout.build_layout]). *)
+type fdo_layout =
+  | Greedy
+  | Ext_tsp
+
+val fdo_layout : fdo_layout ref
+
+val fdo_layout_of_string : string -> fdo_layout
 
 module Flambda2 : sig
   val debug : bool ref
